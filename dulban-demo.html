@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DULBAN LIB · демо-шоукейс</title>
+<!-- Шрифты: Orbitron / Montserrat / Montserrat Alternates (фолбэки — system-ui) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Montserrat:wght@500;600;800&family=Montserrat+Alternates:wght@700&display=swap" rel="stylesheet">
+<!-- Библиотека (в Tampermonkey это же подключается через @resource + GM_addStyle) -->
+<link rel="stylesheet" href="../css/dulban-easings.css">
+<link rel="stylesheet" href="../css/dulban-core.css">
+<link rel="stylesheet" href="../css/dulban-neon.css">
+<link rel="stylesheet" href="../css/dulban-tilt.css">
+<style>
+/* —— стили самого демо (не часть библиотеки) —— */
+*{box-sizing:border-box}
+body{margin:0;background:var(--db-bg);color:var(--db-ink);font-family:var(--db-font-body);line-height:1.5}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+header.hero{padding:64px 0 40px;border-bottom:2px solid var(--db-line)}
+.hero-top{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.hero h1{font-family:var(--db-font-display);font-size:clamp(34px,6vw,58px);letter-spacing:.06em;margin:0}
+.hero .cry{margin:10px 0 22px;color:var(--db-ink-soft);font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:14px}
+.chips{display:flex;gap:10px;flex-wrap:wrap}
+section{padding:56px 0}
+section h2{font-family:var(--db-font-display);font-size:clamp(22px,3.4vw,30px);letter-spacing:.05em;margin:0 0 8px}
+section .sub{color:var(--db-ink-soft);margin:0 0 28px;max-width:720px}
+.row{display:flex;gap:24px;flex-wrap:wrap;align-items:center}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+@media (max-width:760px){.grid3{grid-template-columns:1fr}}
+.shape-cell{display:flex;flex-direction:column;align-items:center;gap:10px;width:96px}
+.shape-cell small{color:var(--db-ink-soft);font-size:12px}
+.svg-row svg{color:var(--db-ink)}
+.dark-band{border-top:2px solid var(--db-line);border-bottom:2px solid var(--db-line)}
+.dark-band h2{color:#fff}
+.dark-band .sub{color:rgba(255,255,255,.6)}
+.neon-hero{font-size:clamp(36px,7vw,64px);font-weight:900;letter-spacing:.08em}
+.neon-uneven{font-family:var(--db-font-display);font-size:clamp(20px,3.4vw,30px);letter-spacing:.22em}
+.tilt-demo-card{min-height:190px;display:flex;flex-direction:column;gap:12px;align-items:flex-start;justify-content:center}
+/* карточки кривых */
+.ease-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:20px}
+.ease-card{border:2px solid var(--db-line);border-radius:12px;background:var(--db-bg);box-shadow:4px 4px 0 var(--db-line);padding:14px;cursor:pointer;transition:transform .18s var(--ease-out-cubic),box-shadow .18s var(--ease-out-cubic)}
+.ease-card:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--db-line)}
+.ease-card svg{display:block;width:100%;height:auto}
+.ease-name{font:600 12px/1 Menlo,Consolas,monospace;margin-top:10px;text-align:center}
+.ease-track{position:relative;height:14px;margin-top:10px;border-top:2px solid var(--db-line)}
+.ease-ball{position:absolute;top:-7px;left:0;width:12px;height:12px;border-radius:50%;background:var(--db-ink);will-change:transform}
+/* сцена tweening */
+.tw-stage{position:relative;height:140px;border:2px solid var(--db-line);border-radius:16px;background:
+  repeating-linear-gradient(90deg,transparent 0 39px,#eceae7 39px 40px);overflow:hidden;margin-bottom:20px}
+#tw-box{position:absolute;left:24px;top:38px;width:64px;height:64px;border-radius:14px;background:var(--db-ink);will-change:transform}
+#tw-box svg{position:absolute;inset:0;margin:auto;color:#fff}
+footer{border-top:2px solid var(--db-line);padding:32px 0;color:var(--db-ink-soft);font-size:14px}
+footer b{font-family:var(--db-font-display);letter-spacing:.1em;color:var(--db-ink)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+details.src{margin-top:26px}
+details.src summary{cursor:pointer;font-weight:700}
+details.src pre{margin-top:12px}
+</style>
+</head>
+<body>
+
+<!-- Спрайты встроены прямо в демо (в Tampermonkey их вставляет DulbanSVG.injectSprite) -->
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="db-shape-circle" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" stroke-width="6"/></symbol>
+    <symbol id="db-shape-dot" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="currentColor"/></symbol>
+    <symbol id="db-shape-square" viewBox="0 0 100 100"><rect x="8" y="8" width="84" height="84" fill="none" stroke="currentColor" stroke-width="6"/></symbol>
+    <symbol id="db-shape-rounded" viewBox="0 0 100 100"><rect x="8" y="8" width="84" height="84" rx="20" fill="none" stroke="currentColor" stroke-width="6"/></symbol>
+    <symbol id="db-shape-diamond" viewBox="0 0 100 100"><rect x="20" y="20" width="60" height="60" rx="8" transform="rotate(45 50 50)" fill="none" stroke="currentColor" stroke-width="6"/></symbol>
+    <symbol id="db-shape-triangle" viewBox="0 0 100 100"><path d="M50 10 L92 88 L8 88 Z" fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/></symbol>
+    <symbol id="db-shape-hex" viewBox="0 0 100 100"><path d="M28 10 L72 10 L94 50 L72 90 L28 90 L6 50 Z" fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/></symbol>
+    <symbol id="db-shape-star" viewBox="0 0 100 100"><path d="M50 6 L61 38 L95 38 L67 58 L77 92 L50 71 L23 92 L33 58 L5 38 L39 38 Z" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/></symbol>
+    <symbol id="db-shape-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="16"/></symbol>
+    <symbol id="db-shape-cross" viewBox="0 0 100 100"><path d="M38 8 H62 V38 H92 V62 H62 V92 H38 V62 H8 V38 H38 Z" fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/></symbol>
+    <symbol id="db-shape-burst" viewBox="0 0 100 100"><path d="M50 4 L57 32 L82 18 L68 43 L96 50 L68 57 L82 82 L57 68 L50 96 L43 68 L18 82 L32 57 L4 50 L32 43 L18 18 L43 32 Z" fill="currentColor"/></symbol>
+    <symbol id="db-icon-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="db-icon-close" viewBox="0 0 24 24"><path d="M18 6 6 18 M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="db-icon-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="db-icon-bolt" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="db-icon-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="db-icon-heart" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="db-icon-star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="db-icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14 M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="db-icon-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="db-icon-sliders" viewBox="0 0 24 24"><path d="M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="db-icon-play" viewBox="0 0 24 24"><path d="M6 3l14 9-14 9V3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="db-icon-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M22 12h-4 M6 12H2 M12 6V2 M12 22v-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-top">
+      <svg width="56" height="56" viewBox="0 0 100 100" style="color:var(--db-ink)"><use href="#db-shape-burst"/></svg>
+      <h1>DULBAN&nbsp;LIB</h1>
+    </div>
+    <p class="cry">I cant play fair</p>
+    <div class="chips">
+      <span class="db-chip db-chip--ink">SVG · CSS · JS</span>
+      <span class="db-chip">W&amp;B стиль</span>
+      <span class="db-chip">для Tampermonkey</span>
+      <span class="db-chip">все примеры — в этом файле</span>
+    </div>
+  </div>
+</header>
+
+<!-- ———————————— 1. ФИГУРЫ ———————————— -->
+<section id="shapes">
+  <div class="wrap">
+    <h2>01 · Фигуры и SVG</h2>
+    <p class="sub">Кружки, квадратики и прочие формы двумя способами: чистый CSS (dulban-core.css) и SVG-спрайт (dulban-shapes.svg). Блоб внизу морфится сам по себе.</p>
+    <div class="row" style="margin-bottom:32px">
+      <div class="shape-cell"><span class="db-shape db-circle"></span><small>.db-circle</small></div>
+      <div class="shape-cell"><span class="db-shape db-square"></span><small>.db-square</small></div>
+      <div class="shape-cell"><span class="db-shape db-rounded"></span><small>.db-rounded</small></div>
+      <div class="shape-cell"><span class="db-shape db-pill"></span><small>.db-pill</small></div>
+      <div class="shape-cell"><span class="db-shape db-diamond"></span><small>.db-diamond</small></div>
+      <div class="shape-cell"><span class="db-shape db-ring"></span><small>.db-ring</small></div>
+      <div class="shape-cell"><span class="db-shape db-tri"></span><small>.db-tri</small></div>
+      <div class="shape-cell"><span class="db-shape db-hex"></span><small>.db-hex</small></div>
+      <div class="shape-cell"><span class="db-shape db-star"></span><small>.db-star</small></div>
+      <div class="shape-cell"><span class="db-shape db-blob db-shape--fill"></span><small>.db-blob</small></div>
+    </div>
+    <div class="row svg-row" style="margin-bottom:32px">
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-circle"/></svg>
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-square"/></svg>
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-rounded"/></svg>
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-diamond"/></svg>
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-triangle"/></svg>
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-hex"/></svg>
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-star"/></svg>
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-ring"/></svg>
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-cross"/></svg>
+      <svg width="56" height="56" viewBox="0 0 100 100"><use href="#db-shape-burst"/></svg>
+    </div>
+    <div class="row svg-row">
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-gear"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-close"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-check"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-bolt"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-eye"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-heart"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-star"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-arrow"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-download"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-sliders"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-play"/></svg>
+      <svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-crosshair"/></svg>
+    </div>
+    <details class="src">
+      <summary>Код</summary>
+<pre class="db-code">&lt;!-- CSS-фигура --&gt;
+&lt;span class="db-shape db-circle"&gt;&lt;/span&gt;
+&lt;span class="db-shape db-blob db-shape--fill"&gt;&lt;/span&gt; &lt;!-- морфится сам --&gt;
+
+&lt;!-- SVG из спрайта (цвет = currentColor) --&gt;
+&lt;svg width="56" height="56" viewBox="0 0 100 100"&gt;&lt;use href="#db-shape-hex"/&gt;&lt;/svg&gt;
+
+// или из JS:
+btn.append(DulbanSVG.icon('bolt', { size: 18 }));</pre>
+    </details>
+  </div>
+</section>
+
+<!-- ———————————— 2. НЕОН ———————————— -->
+<section id="neon" class="db-dark dark-band">
+  <div class="wrap">
+    <h2>02 · Неон</h2>
+    <p class="sub">Яркая зона бежит сквозь текст — где-то светлее, где-то темнее, а не просто мигание целиком. Ниже — неровный неон по буквам, бегущая рамка и фликер.</p>
+    <div class="db-neon-text neon-hero">NEON&nbsp;FLOW</div>
+    <p class="neon-uneven" id="neon-uneven">I CANT PLAY FAIR</p>
+    <hr class="db-neon-line" style="margin:28px 0">
+    <div class="grid3">
+      <div class="db-neon-box"><div>
+        <strong style="font-family:var(--db-font-display);letter-spacing:.08em">Бегущая рамка</strong>
+        <p style="margin:8px 0 0;color:rgba(255,255,255,.65);font-size:14px">conic-градиент вращается под контентом, видна только кромка 2px.</p>
+      </div></div>
+      <div class="db-neon-box"><div class="db-neon-flicker">
+        <strong style="font-family:var(--db-font-display);letter-spacing:.08em;color:var(--neon-b);text-shadow:0 0 8px var(--neon-b),0 0 22px var(--neon-b)">OPEN 24/7</strong>
+        <p style="margin:8px 0 0;color:rgba(255,255,255,.65);font-size:14px">Фликер вывески: нерегулярные провалы яркости через steps().</p>
+      </div></div>
+      <div class="db-neon-box"><div>
+        <button class="db-btn db-btn--neon" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24"><use href="#db-icon-bolt"/></svg>
+          Неон-кнопка
+        </button>
+        <p style="margin:12px 0 0;color:rgba(255,255,255,.65);font-size:14px">Свечение снаружи + изнутри, усиливается при наведении.</p>
+      </div></div>
+    </div>
+    <details class="src">
+      <summary style="color:#fff">Код</summary>
+<pre class="db-code">&lt;!-- переливающийся текст: градиент с белыми вспышками едет сквозь буквы --&gt;
+&lt;div class="db-neon-text"&gt;NEON FLOW&lt;/div&gt;
+
+&lt;!-- неровный неон: каждая буква дышит в своей фазе --&gt;
+&lt;p id="logo"&gt;I CANT PLAY FAIR&lt;/p&gt;
+&lt;script&gt;DulbanSVG.unevenNeon(document.getElementById('logo'));&lt;/script&gt;
+
+&lt;!-- бегущая неоновая рамка --&gt;
+&lt;div class="db-neon-box"&gt;&lt;div&gt;контент&lt;/div&gt;&lt;/div&gt;</pre>
+    </details>
+  </div>
+</section>
+
+<!-- ———————————— 3. 3D-НАКЛОН ———————————— -->
+<section id="tilt">
+  <div class="wrap">
+    <h2>03 · 3D-прогиб при наведении</h2>
+    <p class="sub">Води мышкой: кнопка «прогибается» в 3D — угол под курсором уходит вглубь экрана (press-режим), а карточка справа — классический tilt с параллакс-слоями и бликом.</p>
+    <div class="grid3 db-tilt-wrap">
+      <div class="db-card tilt-demo-card" style="align-items:center;justify-content:center">
+        <button id="tilt-btn" class="db-btn db-btn--ink db-btn--lg" type="button">
+          <svg width="20" height="20" viewBox="0 0 24 24"><use href="#db-icon-bolt"/></svg>
+          PRESS ME
+        </button>
+        <small style="color:var(--db-ink-soft)">press: true — прогибается под курсором</small>
+      </div>
+      <div id="tilt-card" class="db-card tilt-demo-card">
+        <span class="db-chip db-chip--ink" data-tilt-depth="2">
+          <svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px"><use href="#db-icon-crosshair"/></svg>
+          Параллакс
+        </span>
+        <strong data-tilt-depth="1" style="font-family:var(--db-font-display);letter-spacing:.06em">TILT CARD</strong>
+        <p data-tilt-depth="3" style="margin:0;color:var(--db-ink-soft);font-size:14px">Слои с data-tilt-depth всплывают над поверхностью.</p>
+      </div>
+      <div id="tilt-neon" class="db-card db-dark tilt-demo-card" style="border-color:var(--db-line)">
+        <strong class="db-neon-text" style="font-size:22px">NEON TILT</strong>
+        <p style="margin:0;color:rgba(255,255,255,.6);font-size:14px">На тёмном блик становится неоновым (mix-blend-mode: screen).</p>
+      </div>
+    </div>
+    <details class="src">
+      <summary>Код</summary>
+<pre class="db-code">// кнопка прогибается под мышкой (угол уходит ВГЛУБЬ)
+DulbanTilt.attach(btn,  { max: 12, press: true,  glare: true, sink: 12 });
+
+// классический tilt: угол тянется К курсору, дети с data-tilt-depth парят
+DulbanTilt.attach(card, { max: 10, press: false, glare: true });
+
+// или автоматом для всех &lt;div data-db-tilt&gt;
+DulbanTilt.init();</pre>
+    </details>
+  </div>
+</section>
+
+<!-- ———————————— 4. КРИВЫЕ ———————————— -->
+<section id="easings" style="background:var(--db-surface);border-top:2px solid var(--db-line)">
+  <div class="wrap">
+    <h2>04 · Кривые плавности</h2>
+    <p class="sub">График каждой кривой построен из реальной функции DulbanEase. Кликни по карточке — точка пробежит по графику, а шарик внизу проедет с этой кривой. В CSS те же кривые доступны как var(--ease-out-cubic) и т.д.</p>
+    <div id="ease-grid" class="ease-grid"></div>
+    <details class="src">
+      <summary>Код</summary>
+<pre class="db-code">/* CSS */
+.menu { transition: transform .45s var(--ease-out-back); }
+
+/* JS */
+const e = DulbanEase.get('inOutCubic');   // t -&gt; прогресс
+DulbanTween.to(el, { duration: 600, ease: 'outExpo', x: 240 });
+DulbanEase.css.outExpo;                   // 'cubic-bezier(.16,1,.3,1)'</pre>
+    </details>
+  </div>
+</section>
+
+<!-- ———————————— 5. TWEENING ———————————— -->
+<section id="tween">
+  <div class="wrap">
+    <h2>05 · Tweening как в After Effects</h2>
+    <p class="sub">DulbanTween — мини-движок на requestAnimationFrame: ключевые кадры со своими кривыми на каждый сегмент (как ключи в AE), таймлайн с оффсетами '-=200', stagger, yoyo, repeat.</p>
+    <div class="tw-stage">
+      <div id="tw-box"><svg width="26" height="26" viewBox="0 0 24 24"><use href="#db-icon-bolt"/></svg></div>
+    </div>
+    <div class="btn-row">
+      <button class="db-btn" data-tw="slide" type="button">Slide</button>
+      <button class="db-btn" data-tw="pop" type="button">Pop (yoyo)</button>
+      <button class="db-btn" data-tw="keys" type="button">Keyframes AE</button>
+      <button class="db-btn" data-tw="tl" type="button">Timeline</button>
+      <button class="db-btn db-btn--ghost" data-tw="reset" type="button">Reset</button>
+    </div>
+    <details class="src" open>
+      <summary>Код-шаблон</summary>
+<pre class="db-code">// простой твин (аналог двух ключей в AE)
+DulbanTween.to(box, { duration: 900, ease: 'inOutCubic', x: 420 });
+
+// yoyo — туда и обратно
+DulbanTween.to(box, { duration: 350, ease: 'outQuad', scale: [1, 1.35], yoyo: true, repeat: 1 });
+
+// ключевые кадры: t — доля времени, v — значение, ease — кривая подхода к ключу
+DulbanTween.keyframes(box, {
+  prop: 'x', duration: 1600,
+  frames: [
+    { t: 0,    v: 0 },
+    { t: 0.35, v: 420, ease: 'outExpo'   },  // резкий вылет
+    { t: 0.65, v: 340, ease: 'inOutQuad' },  // откат
+    { t: 1,    v: 420, ease: 'outBack'   },  // дожать с перелётом
+  ],
+});
+
+// таймлайн — как слои в AE, '-=200' = начать на 200мс раньше конца предыдущего
+DulbanTween.timeline()
+  .add(box, { duration: 500, ease: 'outExpo',  y: [0, -20] })
+  .add(box, { duration: 500, ease: 'outBounce', y: 0 }, '-=120')
+  .add(box, { duration: 700, ease: 'inOutBack', rotate: 360 })
+  .play();</pre>
+    </details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap"><b>DULBAN LIB</b> · I cant play fair · библиотека для Tampermonkey · файлы: css/ js/ svg/ demo/</div>
+</footer>
+
+<script src="../js/dulban-easings.js"></script>
+<script src="../js/dulban-tween.js"></script>
+<script src="../js/dulban-tilt.js"></script>
+<script src="../js/dulban-svg.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* —— неровный неон по буквам —— */
+  DulbanSVG.unevenNeon(document.getElementById('neon-uneven'));
+
+  /* —— 3D-наклон —— */
+  DulbanTilt.attach(document.getElementById('tilt-btn'),  { max: 12, press: true,  glare: true, sink: 12 });
+  DulbanTilt.attach(document.getElementById('tilt-card'), { max: 10, press: false, glare: true });
+  DulbanTilt.attach(document.getElementById('tilt-neon'), { max: 12, press: true,  glare: true });
+
+  /* —— галерея кривых —— */
+  var NAMES = ['inQuad','outQuad','inOutQuad','inCubic','outCubic','inOutCubic',
+               'inOutQuart','inOutQuint','inExpo','outExpo','inOutExpo','inOutCirc',
+               'inOutSine','outBack','inOutBack','outElastic','outBounce','inOutBounce'];
+  var grid = document.getElementById('ease-grid');
+  var SVGNS = 'http://www.w3.org/2000/svg';
+
+  NAMES.forEach(function (name, idx) {
+    var fn = DulbanEase.get(name);
+    var card = document.createElement('div');
+    card.className = 'ease-card';
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', 'Проиграть ' + name);
+
+    var svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', '0 -40 100 180');
+    // единичный квадрат + диагональ linear для сравнения
+    var frame = document.createElementNS(SVGNS, 'rect');
+    frame.setAttribute('x', 0); frame.setAttribute('y', 0);
+    frame.setAttribute('width', 100); frame.setAttribute('height', 100);
+    frame.setAttribute('fill', 'none'); frame.setAttribute('stroke', '#e2e0dd'); frame.setAttribute('stroke-width', 1.5);
+    svg.appendChild(frame);
+    var diag = document.createElementNS(SVGNS, 'line');
+    diag.setAttribute('x1', 0); diag.setAttribute('y1', 100);
+    diag.setAttribute('x2', 100); diag.setAttribute('y2', 0);
+    diag.setAttribute('stroke', '#d5d3d0'); diag.setAttribute('stroke-dasharray', '4 4'); diag.setAttribute('stroke-width', 1.5);
+    svg.appendChild(diag);
+    // сама кривая
+    var d = '';
+    for (var i = 0; i <= 60; i++) {
+      var t = i / 60;
+      var x = t * 100;
+      var y = 100 - fn(t) * 100;
+      d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2);
+    }
+    var path = document.createElementNS(SVGNS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#0d0d0d');
+    path.setAttribute('stroke-width', 2.5);
+    svg.appendChild(path);
+    // бегущая точка
+    var dot = document.createElementNS(SVGNS, 'circle');
+    dot.setAttribute('r', 4);
+    dot.setAttribute('cx', 0); dot.setAttribute('cy', 100);
+    dot.setAttribute('fill', '#0d0d0d');
+    svg.appendChild(dot);
+
+    var track = document.createElement('div');
+    track.className = 'ease-track';
+    var ball = document.createElement('span');
+    ball.className = 'ease-ball';
+    track.appendChild(ball);
+
+    var label = document.createElement('div');
+    label.className = 'ease-name';
+    label.textContent = name;
+
+    card.appendChild(svg);
+    card.appendChild(track);
+    card.appendChild(label);
+    grid.appendChild(card);
+
+    var playing = false;
+    function play() {
+      if (playing) return;
+      playing = true;
+      var w = track.clientWidth - 12;
+      DulbanTween.to({ p: 0 }, {
+        p: 1, duration: 1200, ease: 'linear',
+        onUpdate: function (raw) {
+          var e = fn(raw);
+          dot.setAttribute('cx', (raw * 100).toFixed(2));
+          dot.setAttribute('cy', (100 - e * 100).toFixed(2));
+          ball.style.transform = 'translateX(' + (e * w).toFixed(1) + 'px)';
+        },
+        onComplete: function () { playing = false; },
+      });
+    }
+    card.addEventListener('click', play);
+    card.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); play(); } });
+    setTimeout(play, 400 + idx * 90); // автостарт каскадом
+  });
+
+  /* —— tweening-площадка —— */
+  var box = document.getElementById('tw-box');
+  var stage = box.parentElement;
+  var slid = false;
+  function maxX() { return stage.clientWidth - box.offsetWidth - 48; }
+
+  var actions = {
+    slide: function () {
+      DulbanTween.to(box, { duration: 900, ease: 'inOutCubic', x: slid ? 0 : maxX() });
+      slid = !slid;
+    },
+    pop: function () {
+      DulbanTween.to(box, { duration: 350, ease: 'outQuad', scale: [1, 1.35], yoyo: true, repeat: 1 });
+    },
+    keys: function () {
+      slid = true;
+      DulbanTween.keyframes(box, {
+        prop: 'x', duration: 1600,
+        frames: [
+          { t: 0, v: 0 },
+          { t: 0.35, v: maxX(), ease: 'outExpo' },
+          { t: 0.65, v: maxX() * 0.8, ease: 'inOutQuad' },
+          { t: 1, v: maxX(), ease: 'outBack' },
+        ],
+      });
+    },
+    tl: function () {
+      DulbanTween.timeline()
+        .add(box, { duration: 450, ease: 'outExpo', y: [0, -22] })
+        .add(box, { duration: 550, ease: 'outBounce', y: 0 }, '-=100')
+        .add(box, { duration: 700, ease: 'inOutBack', rotate: [0, 360] })
+        .play();
+    },
+    reset: function () {
+      DulbanTween.kill(box);
+      box._dbTw = null;
+      box.style.transform = '';
+      box.style.opacity = '';
+      slid = false;
+    },
+  };
+  document.querySelectorAll('[data-tw]').forEach(function (b) {
+    b.addEventListener('click', function () { actions[b.dataset.tw](); });
+  });
+})();
+</script>
+</body>
+</html>

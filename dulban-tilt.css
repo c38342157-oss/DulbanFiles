@@ -1,0 +1,44 @@
+/* ============================================================
+   DULBAN LIB · dulban-tilt.css
+   Стили для 3D-наклона/прогиба элемента под курсором.
+   Логика — в js/dulban-tilt.js (DulbanTilt.attach).
+   ============================================================ */
+
+/* родитель задаёт перспективу (можно без него — JS добавит perspective в transform) */
+.db-tilt-wrap{perspective:900px}
+
+.db-tilt{
+  position:relative;
+  transform-style:preserve-3d;
+  will-change:transform;
+  /* плавный возврат, когда JS сбрасывает transform при уходе мыши */
+  transition:box-shadow .25s ease;
+}
+.db-tilt.is-tilting{transition:none}
+
+/* блик, следующий за курсором (создаётся JS при glare:true) */
+.db-tilt__glare{
+  position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(220px circle at var(--gx,50%) var(--gy,50%),
+              rgba(255,255,255,.55),rgba(255,255,255,0) 60%);
+  opacity:0;transition:opacity .25s ease;
+  mix-blend-mode:soft-light;
+}
+.db-tilt.is-tilting .db-tilt__glare{opacity:1}
+
+/* тёмная версия блика для неоновых поверхностей */
+.db-dark .db-tilt__glare{
+  background:radial-gradient(260px circle at var(--gx,50%) var(--gy,50%),
+              rgba(125,249,255,.35),rgba(125,249,255,0) 65%);
+  mix-blend-mode:screen;
+}
+
+/* дочерние слои с параллаксом: чем больше depth, тем сильнее "всплывает" */
+.db-tilt [data-tilt-depth="1"]{transform:translateZ(14px)}
+.db-tilt [data-tilt-depth="2"]{transform:translateZ(28px)}
+.db-tilt [data-tilt-depth="3"]{transform:translateZ(44px)}
+
+@media (prefers-reduced-motion:reduce){
+  .db-tilt{transform:none !important}
+  .db-tilt__glare{display:none}
+}

@@ -1,0 +1,105 @@
+/* ============================================================
+   DULBAN LIB · dulban-neon.css
+   Неон: переливающийся текст (яркая зона бежит по буквам,
+   где-то светлее / где-то темнее), неровный неон по буквам,
+   бегущая неоновая рамка, фликер вывески, неон-линия.
+   Неон живёт на тёмном — оборачивай в .db-dark.
+   ============================================================ */
+:root{
+  --neon-a:#7df9ff; /* льдистый голубой */
+  --neon-b:#ff5ecf; /* розовый */
+  --neon-c:#9dff57; /* кислотно-зелёный */
+  --neon-d:#ffe14d; /* жёлтый */
+}
+.db-dark{background:#0b0b10;color:#fff}
+
+/* --- 1. Переливающийся неоновый текст -----------------------
+   Градиент с белыми "вспышками" едет сквозь текст —
+   яркая зона перемещается, остальное остаётся тусклее.
+   Параллельно пульсирует свечение (drop-shadow) в другом ритме,
+   поэтому картинка не циклится визуально каждые N секунд. */
+.db-neon-text{
+  display:inline-block;
+  font-family:var(--db-font-display,sans-serif);
+  background:linear-gradient(100deg,
+    var(--neon-a) 0%, #ffffff 10%, var(--neon-a) 22%,
+    var(--neon-b) 44%, #ffffff 54%, var(--neon-b) 64%,
+    var(--neon-d) 82%, var(--neon-a) 100%);
+  background-size:260% 100%;
+  -webkit-background-clip:text;background-clip:text;
+  color:transparent;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 6px rgba(125,249,255,.7)) drop-shadow(0 0 18px rgba(255,94,207,.4));
+  animation:db-neon-flow 6s linear infinite,
+            db-neon-pulse 3.4s ease-in-out infinite;
+}
+@keyframes db-neon-flow{to{background-position:-260% 0}}
+@keyframes db-neon-pulse{
+  0%,100%{filter:drop-shadow(0 0 4px rgba(125,249,255,.55)) drop-shadow(0 0 12px rgba(255,94,207,.3))}
+  50%{filter:drop-shadow(0 0 9px rgba(125,249,255,.95)) drop-shadow(0 0 26px rgba(255,94,207,.6))}
+}
+
+/* --- 2. Неровный неон по буквам ------------------------------
+   Вызови DulbanSVG.unevenNeon(el) — текст разрежется на буквы,
+   каждой достанется случайная фаза/скорость дыхания:
+   одни буквы ярче, другие темнее — как у живой вывески. */
+.db-neon-letter{
+  display:inline-block;color:#eafcff;
+  text-shadow:0 0 4px var(--neon-a),0 0 12px var(--neon-a),0 0 28px #1ec8ff;
+  animation:db-letter-breathe var(--dur,2.8s) ease-in-out var(--del,0s) infinite;
+}
+@keyframes db-letter-breathe{
+  0%,100%{opacity:.5;text-shadow:0 0 2px var(--neon-a),0 0 6px #1ec8ff}
+  50%{opacity:1;text-shadow:0 0 6px #fff,0 0 16px var(--neon-a),0 0 36px #1ec8ff}
+}
+
+/* --- 3. Неоновая рамка с бегущим градиентом -----------------
+   Структура: <div class="db-neon-box"><div>контент</div></div>
+   ::before — вращающийся conic-градиент под контентом,
+   видна только кромка шириной padding. */
+.db-neon-box{
+  position:relative;border-radius:18px;padding:2px;overflow:hidden;
+  isolation:isolate;
+  box-shadow:0 0 22px rgba(125,249,255,.25),0 0 46px rgba(255,94,207,.18);
+}
+.db-neon-box::before{
+  content:"";position:absolute;z-index:-1;
+  inset:-150%; /* запас, чтобы углы не оголялись при вращении */
+  background:conic-gradient(var(--neon-a),var(--neon-b),var(--neon-d),var(--neon-c),var(--neon-a));
+  animation:db-spin 5s linear infinite;
+}
+.db-neon-box>*{
+  position:relative;background:#0e0e16;border-radius:16px;padding:22px;
+}
+@keyframes db-spin{to{transform:rotate(1turn)}}
+
+/* --- 4. Неон-линия (трубка) ------------------------------------ */
+.db-neon-line{
+  height:3px;border:none;border-radius:3px;
+  background:linear-gradient(90deg,var(--neon-a),var(--neon-b),var(--neon-d),var(--neon-a));
+  background-size:220% 100%;
+  box-shadow:0 0 8px rgba(125,249,255,.8),0 0 22px rgba(255,94,207,.5);
+  animation:db-neon-flow 4s linear infinite;
+}
+
+/* --- 5. Фликер вывески (нерегулярное мигание) --------------- */
+.db-neon-flicker{animation:db-flicker 5s steps(1,end) infinite}
+@keyframes db-flicker{
+  0%,7%,9%,31%,33%,73%,76%,92%,100%{opacity:1}
+  8%,32%{opacity:.3}
+  74%{opacity:.55}
+  91%{opacity:.4}
+}
+
+/* --- 6. Неоновая кнопка ------------------------------------- */
+.db-btn--neon{
+  background:#101018;color:#eafcff;border-color:var(--neon-a);
+  box-shadow:0 0 10px rgba(125,249,255,.5),inset 0 0 10px rgba(125,249,255,.18),4px 4px 0 rgba(125,249,255,.35);
+  text-shadow:0 0 6px var(--neon-a);
+}
+.db-btn--neon:hover{
+  box-shadow:0 0 18px rgba(125,249,255,.85),inset 0 0 16px rgba(125,249,255,.3),6px 6px 0 rgba(125,249,255,.45);
+}
+
+@media (prefers-reduced-motion:reduce){
+  .db-neon-text,.db-neon-letter,.db-neon-line,.db-neon-flicker,.db-neon-box::before{animation:none}
+}

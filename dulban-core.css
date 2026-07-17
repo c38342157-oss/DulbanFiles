@@ -1,0 +1,113 @@
+/* ============================================================
+   DULBAN LIB · dulban-core.css
+   База в W&B-стиле: белый фон, чёрные края/детали.
+   Кнопки, карточки, чипы, фигуры (круги, квадраты, гексы, блобы).
+   Tampermonkey: GM_addStyle(GM_getResourceText('DB_CORE'));
+   ============================================================ */
+:root{
+  --db-bg:#ffffff;
+  --db-surface:#f7f6f4;
+  --db-ink:#0d0d0d;
+  --db-ink-soft:#6b6b6b;
+  --db-line:#0d0d0d;
+  --db-line-w:2px;
+  --db-r:12px;
+  --db-r-lg:20px;
+  --db-shadow:4px 4px 0 var(--db-line);
+  --db-shadow-lg:8px 8px 0 var(--db-line);
+  --db-font-display:"Orbitron","Montserrat Alternates","TT Fors",system-ui,sans-serif;
+  --db-font-body:"Montserrat","TT Interphases Pro",system-ui,sans-serif;
+}
+
+.db-font-display{font-family:var(--db-font-display);letter-spacing:.05em}
+.db-font-body{font-family:var(--db-font-body)}
+
+/* --- кнопки ------------------------------------------------ */
+.db-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  min-height:44px;padding:10px 22px;
+  font:600 15px/1.2 var(--db-font-body);
+  color:var(--db-ink);background:var(--db-bg);
+  border:var(--db-line-w) solid var(--db-line);
+  border-radius:var(--db-r);
+  box-shadow:var(--db-shadow);
+  cursor:pointer;user-select:none;text-decoration:none;
+  transition:transform .18s var(--ease-out-cubic,ease),
+             box-shadow .18s var(--ease-out-cubic,ease),
+             background .18s ease,color .18s ease;
+}
+.db-btn:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--db-line)}
+.db-btn:active{transform:translate(3px,3px);box-shadow:1px 1px 0 var(--db-line)}
+.db-btn:focus-visible{outline:3px solid #2783de;outline-offset:2px}
+.db-btn--ink{background:var(--db-ink);color:#fff}
+.db-btn--ink:hover{background:#1c1c1c}
+.db-btn--ghost{box-shadow:none;background:transparent}
+.db-btn--ghost:hover{background:var(--db-surface);transform:none;box-shadow:none}
+.db-btn--lg{min-height:56px;padding:14px 32px;font-size:17px;border-radius:var(--db-r-lg)}
+.db-btn svg{flex:none}
+
+/* --- карточки, чипы, разное -------------------------------- */
+.db-card{
+  background:var(--db-bg);color:var(--db-ink);
+  border:var(--db-line-w) solid var(--db-line);
+  border-radius:var(--db-r-lg);
+  box-shadow:var(--db-shadow-lg);
+  padding:24px;
+}
+.db-card--flat{box-shadow:none}
+.db-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 14px;border:var(--db-line-w) solid var(--db-line);
+  border-radius:999px;background:var(--db-bg);
+  font:600 13px/1.2 var(--db-font-body);color:var(--db-ink);
+}
+.db-chip--ink{background:var(--db-ink);color:#fff}
+.db-kbd{
+  display:inline-block;padding:2px 8px;border:var(--db-line-w) solid var(--db-line);
+  border-bottom-width:4px;border-radius:8px;background:var(--db-surface);
+  font:600 12px/1.4 Menlo,Consolas,monospace;color:var(--db-ink);
+}
+.db-divider{border:none;border-top:var(--db-line-w) solid var(--db-line);margin:32px 0}
+.db-code{
+  background:var(--db-surface);border:var(--db-line-w) solid var(--db-line);
+  border-radius:var(--db-r);padding:16px 20px;overflow:auto;
+  font:13px/1.6 Menlo,Consolas,monospace;color:var(--db-ink);
+  text-align:left;white-space:pre;
+}
+
+/* --- фигуры (дизайн-элементы) ------------------------------ */
+.db-shape{
+  --sz:64px;
+  width:var(--sz);height:var(--sz);display:inline-block;flex:none;
+  background:var(--db-bg);
+  border:var(--db-line-w) solid var(--db-line);
+  box-shadow:var(--db-shadow);
+}
+.db-shape--fill{background:var(--db-ink)}
+.db-circle{border-radius:50%}
+.db-square{border-radius:0}
+.db-rounded{border-radius:var(--db-r)}
+.db-pill{border-radius:999px;width:calc(var(--sz)*1.9)}
+.db-diamond{transform:rotate(45deg);border-radius:10px}
+.db-ring{border-radius:50%;border-width:calc(var(--sz)*.16);box-shadow:none;background:transparent}
+
+/* clip-path-фигуры: рамка невозможна, поэтому заливка чёрным */
+.db-tri,.db-hex,.db-star{border:none;box-shadow:none;background:var(--db-ink)}
+.db-tri{clip-path:polygon(50% 4%,100% 96%,0 96%)}
+.db-hex{clip-path:polygon(25% 5%,75% 5%,100% 50%,75% 95%,25% 95%,0 50%)}
+.db-star{clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)}
+
+/* «живой» блоб — форма постоянно морфится */
+.db-blob{
+  border-radius:44% 56% 58% 42%/46% 42% 58% 54%;
+  animation:db-blob 9s ease-in-out infinite alternate;
+}
+@keyframes db-blob{
+  0%{border-radius:44% 56% 58% 42%/46% 42% 58% 54%}
+  50%{border-radius:58% 42% 40% 60%/52% 60% 40% 48%}
+  100%{border-radius:40% 60% 55% 45%/58% 44% 56% 42%}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .db-blob{animation:none}
+}
