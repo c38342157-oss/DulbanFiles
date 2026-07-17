@@ -465,9 +465,10 @@
   flex: 0 0 auto;
   border: 2px solid var(--dm-black);
   border-radius: 999px;
-  background: var(--dm-white);
-  transition: background 0.3s ease;
+  background-color: var(--dm-white);
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
   overflow: hidden;
+  isolation: isolate;
 }
 .dm-toggle::before {
   content: '';
@@ -481,12 +482,22 @@
   transition: transform 0.35s var(--dm-ease-pop), background 0.3s ease, width 0.2s ease;
 }
 .dm-toggle:active::before { width: 24px; }
-.dm-toggle[aria-pressed='true'] { background: var(--dm-black); }
-.dm-toggle[aria-pressed='true']::before {
-  transform: translateX(22px);
-  background: var(--dm-white);
+/* Активное состояние: чернеет только дорожка тумблера,
+   а белый бегунок остаётся контрастным поверх неё. Класс .is-on —
+   визуальный дубль aria-pressed на случай агрессивных стилей страницы. */
+#dulban-root .dm-toggle[aria-pressed='true'],
+#dulban-root .dm-toggle.is-on {
+  background-color: var(--dm-black) !important;
+  box-shadow: inset 0 0 0 1px var(--dm-black);
 }
-.dm-toggle:active[aria-pressed='true']::before { transform: translateX(16px); }
+#dulban-root .dm-toggle[aria-pressed='true']::before,
+#dulban-root .dm-toggle.is-on::before {
+  transform: translateX(22px);
+  background-color: var(--dm-white) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+#dulban-root .dm-toggle:active[aria-pressed='true']::before,
+#dulban-root .dm-toggle.is-on:active::before { transform: translateX(16px); }
 .dm-toggle::after {
   content: '';
   position: absolute;
@@ -498,7 +509,8 @@
   transform: translateY(-50%);
   transition: opacity 0.2s;
 }
-.dm-toggle[aria-pressed='true']::after { opacity: 0; }
+#dulban-root .dm-toggle[aria-pressed='true']::after,
+#dulban-root .dm-toggle.is-on::after { opacity: 0; }
 
 /* ---------- кнопки ---------- */
 .dm-btn {
