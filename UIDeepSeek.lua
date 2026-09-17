@@ -7,24 +7,15 @@
 	██████╔╝╚██████╔╝███████╗██████╔╝██║  ██║██║ ╚████║
 	╚═════╝  ╚═════╝ ╚══════╝╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝
 	
-	DulbanUI v1.0.0 — « I cant play fair »
+	DulbanUI v1.0.1 — « I cant play fair »
 	Neo-brutalist + Neon W&B GUI для Roblox.
-	
-	Example:
-		local DulbanUI = require(game.ReplicatedStorage.DulbanUI)
-		local win = DulbanUI.new({
-			Title = "DULBAN MENU",
-			Subtitle = "« I cant play fair »",
-			Theme = "Cyberpunk",  -- White | Dark | Cyberpunk | Midnight
-		})
-		
-		local tab = win:CreateTab("Main", "rbxassetid://")
-		local sec = tab:CreateSection("General")
-		sec:CreateButton("Click", function() print("hi") end)
-		sec:CreateToggle("Enabled", false, function(v) end)
-		sec:CreateDangerButton("Reset", 1.5, function() end)
-		sec:CreateSlider("Volume", 0, 100, 50, function(v) end)
-		win:Show()
+
+	FIX в v1.0.1:
+		• убрано присваивание полей прямо в Instance (card._stroke = ...),
+		  из-за которого падало "_stroke is not a valid member of Frame";
+		• все метаданные теперь в WeakTable Store;
+		• починен `frame.Destroying = nil` → корректное :Connect();
+		• modal._title / _scroll / _close тоже переведены на Store.
 ]]
 
 local TweenService = game:GetService("TweenService")
@@ -37,7 +28,29 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 -- ═══════════════════════════════════════════════════════════════════════
--- EASINGS  (портированы из dulban-easings.js)
+-- STORE  (WeakTable для метаданных инстансов)
+-- Roblox НЕ разрешает писать произвольные поля в Instance,
+-- поэтому храним всё здесь: Store.set(frame, "stroke", s)
+-- ═══════════════════════════════════════════════════════════════════════
+local Store = setmetatable({}, { __mode = "k" })
+
+function Store.set(inst, key, value)
+	local m = Store[inst]
+	if not m then
+		m = {}
+		Store[inst] = m
+	end
+	m[key] = value
+	return value
+end
+
+function Store.get(inst, key)
+	local m = Store[inst]
+	return m and m[key]
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- EASINGS
 -- ═══════════════════════════════════════════════════════════════════════
 local PI = math.pi
 local c1, c2, c3 = 1.70158, 1.70158 * 1.525, 1.70158 + 1
@@ -148,7 +161,6 @@ local function tw(inst, time, props, ease, delay)
 	return t
 end
 
--- Кастомный tween по функции (для произвольных кривых)
 local function customTween(duration, easeFunc, onUpdate, onComplete)
 	local start = tick()
 	local conn
@@ -238,7 +250,6 @@ Themes.Midnight = {
 local function make(className, props, children)
 	local inst = Instance.new(className)
 	if props then
-		local parent = props.Parent
 		for k, v in pairs(props) do
 			if k ~= "Parent" then
 				inst[k] = v
@@ -280,7 +291,7 @@ local function pad(top, bottom, left, right, parent)
 	})
 end
 
-local function gradient(parent, colorA, colorB, rotation, transparency)
+local function gradient(parent, colorA, colorB, rotation)
 	local g = make("UIGradient", {
 		Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, colorA),
@@ -289,12 +300,11 @@ local function gradient(parent, colorA, colorB, rotation, transparency)
 		Rotation = rotation or 90,
 		Parent = parent,
 	})
-	if transparency then g.Transparency = transparency end
 	return g
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
--- UI OBJECT
+-- UI
 -- ═══════════════════════════════════════════════════════════════════════
 local UI = {}
 UI.__index = UI
@@ -302,6 +312,7 @@ UI.Ease = Ease
 UI.Themes = Themes
 UI.Tween = tw
 UI.CustomTween = customTween
+UI.Store = Store
 
 function UI.new(props)
 	props = props or {}
@@ -318,7 +329,6 @@ function UI.new(props)
 	self.Tabs = {}
 	self.TabButtons = {}
 	self.ActiveTab = nil
-	self.ContentRegistry = {} -- элементы для применения темы
 	self.IsOpen = false
 	self.IsMinimized = false
 
@@ -333,8 +343,6 @@ function UI:theme(key)
 	return self.Theme[key]
 end
 
--- ─────────────────────────────────────────────────────────────
--- BUILD
 -- ─────────────────────────────────────────────────────────────
 function UI:_build()
 	local th = self.Theme
@@ -357,7 +365,6 @@ function UI:_build()
 		Parent = self.ScreenGui,
 	})
 
-	-- Shadow
 	self.Shadow = make("Frame", {
 		Name = "Shadow",
 		Size = UDim2.new(1, 0, 1, 0),
@@ -369,7 +376,6 @@ function UI:_build()
 	})
 	corner(18, self.Shadow)
 
-	-- Main frame
 	self.Frame = make("Frame", {
 		Name = "Main",
 		Size = UDim2.fromScale(1, 1),
@@ -381,25 +387,14 @@ function UI:_build()
 	corner(18, self.Frame)
 	self.MainStroke = stroke(th.Border, 2, self.Frame)
 	self.MainGradient = gradient(self.Frame, th.Background, th.Surface, 90)
-	self.MainGradient.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(1, 0.92),
-	})
 
-	-- Neon outline (hidden by default, used in Cyberpunk/Midnight)
 	self.NeonStroke = stroke(th.Neon, 1.5, self.Frame, 1)
-	self.NeonStroke.Transparency = 1
 	self.NeonStroke.LineJoinMode = Enum.LineJoinMode.Round
 
 	self:_buildHeader()
 	self:_buildBody()
 	self:_buildFooter()
 
-	-- Full-window shadow frame used for the open animation
-	self.Frame.Position = UDim2.fromScale(0, 0)
-	self.Frame.Size = UDim2.fromScale(1, 1)
-
-	-- open state (hidden until Show)
 	self.Frame.Visible = false
 	self.Shadow.Visible = false
 	self:MakeDraggable(self.Header)
@@ -416,17 +411,7 @@ function UI:_buildHeader()
 		Parent = self.Frame,
 	})
 	corner(18, self.Header)
-	-- cover the bottom corners
-	make("Frame", {
-		Size = UDim2.new(1, 0, 0, 20),
-		Position = UDim2.new(0, 0, 1, -20),
-		BackgroundColor3 = th.Background,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Parent = self.Header,
-	})
 
-	-- Diagonal stripe pattern (as in dulban-menu.css)
 	local stripe = make("Frame", {
 		Name = "Stripes",
 		Size = UDim2.fromScale(1, 1),
@@ -437,7 +422,6 @@ function UI:_buildHeader()
 	})
 	corner(18, stripe)
 
-	-- Bottom border
 	make("Frame", {
 		Name = "BottomBorder",
 		Size = UDim2.new(1, 0, 0, 2),
@@ -448,7 +432,6 @@ function UI:_buildHeader()
 		Parent = self.Header,
 	})
 
-	-- Logo
 	self.Logo = make("Frame", {
 		Name = "Logo",
 		Size = UDim2.fromOffset(44, 44),
@@ -459,7 +442,7 @@ function UI:_buildHeader()
 		Parent = self.Header,
 	})
 	corner(13, self.Logo)
-	self.LogoStroke = stroke(th.Border, 2, self.Logo, 0)
+	stroke(th.Border, 2, self.Logo, 0)
 
 	self.LogoIcon = make("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
@@ -470,10 +453,8 @@ function UI:_buildHeader()
 		Font = Enum.Font.GothamBlack,
 		Parent = self.Logo,
 	})
-	pad(8, 8, 8, 8, self.LogoIcon)
-	self.LogoIcon:FindFirstChildOfClass("UIPadding").PaddingTop = UDim.new(0, 8)
+	pad(10, 10, 10, 10, self.LogoIcon)
 
-	-- Dashed rotating ring around logo
 	self.LogoRing = make("Frame", {
 		Name = "Ring",
 		Size = UDim2.fromOffset(56, 56),
@@ -482,11 +463,9 @@ function UI:_buildHeader()
 		BackgroundTransparency = 1,
 		Parent = self.Logo,
 	})
-	self.LogoRingStroke = stroke(th.Border, 1.5, self.LogoRing, 0.5)
+	self.LogoRingStroke = stroke(th.Border, 1.5, self.LogoRing, 0.55)
 	self.LogoRingStroke.LineJoinMode = Enum.LineJoinMode.Round
-	self.LogoRingStroke.Transparency = 0.55
 
-	-- Title
 	local titleBox = make("Frame", {
 		Name = "TitleBox",
 		Size = UDim2.new(1, -220, 1, 0),
@@ -521,7 +500,6 @@ function UI:_buildHeader()
 		Parent = titleBox,
 	})
 
-	-- Header buttons
 	local btns = make("Frame", {
 		Name = "HeaderButtons",
 		Size = UDim2.fromOffset(90, 30),
@@ -538,17 +516,17 @@ function UI:_buildHeader()
 		Parent = btns,
 	})
 
-	self.MinimizeBtn = self:_makeHeaderButton(btns, "—", "Свернуть")
-	self.CloseBtn = self:_makeHeaderButton(btns, "✕", "Закрыть")
+	self.MinimizeBtn = self:_makeHeaderButton(btns, "—")
+	self.CloseBtn = self:_makeHeaderButton(btns, "✕")
 
 	self.MinimizeBtn.MouseButton1Click:Connect(function() self:ToggleMinimize() end)
 	self.CloseBtn.MouseButton1Click:Connect(function() self:Hide() end)
 end
 
-function UI:_makeHeaderButton(parent, glyph, tip)
+function UI:_makeHeaderButton(parent, glyph)
 	local th = self.Theme
 	local btn = make("TextButton", {
-		Name = "HeaderBtn_" .. glyph,
+		Name = "HeaderBtn",
 		Size = UDim2.fromOffset(28, 28),
 		BackgroundColor3 = th.Background,
 		Text = "",
@@ -557,7 +535,7 @@ function UI:_makeHeaderButton(parent, glyph, tip)
 		Parent = parent,
 	})
 	corner(9, btn)
-	local s = stroke(th.Border, 2, btn)
+	stroke(th.Border, 2, btn)
 
 	local label = make("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
@@ -570,11 +548,11 @@ function UI:_makeHeaderButton(parent, glyph, tip)
 	})
 
 	btn.MouseEnter:Connect(function()
-		tw(btn, 0.18, { BackgroundColor3 = th.Border, Position = UDim2.new(btn.Position.X.Scale, btn.Position.X.Offset, btn.Position.Y.Scale, btn.Position.Y.Offset - 2) }, "outBack")
+		tw(btn, 0.18, { BackgroundColor3 = th.Border }, "outBack")
 		tw(label, 0.18, { TextColor3 = th.Background }, "outQuad")
 	end)
 	btn.MouseLeave:Connect(function()
-		tw(btn, 0.18, { BackgroundColor3 = th.Background, Position = UDim2.new(btn.Position.X.Scale, btn.Position.X.Offset, btn.Position.Y.Scale, btn.Position.Y.Offset + 2) }, "outBack")
+		tw(btn, 0.18, { BackgroundColor3 = th.Background }, "outBack")
 		tw(label, 0.18, { TextColor3 = th.TextPrimary }, "outQuad")
 	end)
 	btn.MouseButton1Down:Connect(function()
@@ -597,7 +575,6 @@ function UI:_buildBody()
 		Parent = self.Frame,
 	})
 
-	-- Tab rail
 	self.Rail = make("Frame", {
 		Name = "Rail",
 		Size = UDim2.new(0, 58, 1, 0),
@@ -623,7 +600,6 @@ function UI:_buildBody()
 	})
 	make("UIPadding", { PaddingTop = UDim.new(0, 12), Parent = self.Rail })
 
-	-- Content
 	self.Content = make("Frame", {
 		Name = "Content",
 		Size = UDim2.new(1, -58, 1, 0),
@@ -632,6 +608,7 @@ function UI:_buildBody()
 		ClipsDescendants = true,
 		Parent = self.Body,
 	})
+
 	self.ContentScroll = make("ScrollingFrame", {
 		Name = "Scroll",
 		Size = UDim2.fromScale(1, 1),
@@ -650,7 +627,6 @@ function UI:_buildBody()
 		Parent = self.ContentScroll,
 	})
 	pad(15, 18, 16, 16, self.ContentScroll)
-	self.ContentLayout = self.ContentScroll:FindFirstChildOfClass("UIListLayout")
 end
 
 function UI:_buildFooter()
@@ -671,11 +647,11 @@ function UI:_buildFooter()
 		Parent = self.Footer,
 	})
 
-	local left = make("TextLabel", {
+	self.FooterLeft = make("TextLabel", {
 		Size = UDim2.new(0.5, -14, 1, 0),
 		Position = UDim2.fromOffset(14, 0),
 		BackgroundTransparency = 1,
-		Text = "DULBAN · v1.0.0",
+		Text = "DULBAN · v1.0.1",
 		TextColor3 = th.TextSecondary,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Font = Enum.Font.GothamBold,
@@ -683,7 +659,7 @@ function UI:_buildFooter()
 		Parent = self.Footer,
 	})
 
-	local right = make("TextLabel", {
+	self.FooterRight = make("TextLabel", {
 		Size = UDim2.new(0.5, -14, 1, 0),
 		Position = UDim2.new(0.5, 0, 0, 0),
 		BackgroundTransparency = 1,
@@ -694,17 +670,12 @@ function UI:_buildFooter()
 		TextSize = 10,
 		Parent = self.Footer,
 	})
-	self.FooterLeft = left
-	self.FooterRight = right
 end
 
--- ─────────────────────────────────────────────────────────────
--- DRAGGING  with tweening
 -- ─────────────────────────────────────────────────────────────
 function UI:MakeDraggable(dragBar)
 	local dragging = false
 	local dragStart, startPos
-	local connMove, connEnd
 
 	local function update(input)
 		local delta = input.Position - dragStart
@@ -732,7 +703,7 @@ function UI:MakeDraggable(dragBar)
 		end
 	end)
 	dragBar.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			update(input)
 		end
 	end)
@@ -747,10 +718,9 @@ function UI:CreateTab(name, icon)
 		Icon = icon or "●",
 		Sections = {},
 		_ui = self,
-		_themeKey = name,
+		_active = false,
 	}
 
-	-- Rail button
 	local th = self.Theme
 	local btn = make("TextButton", {
 		Name = "Tab_" .. name,
@@ -774,10 +744,8 @@ function UI:CreateTab(name, icon)
 		Font = Enum.Font.GothamBold,
 		Parent = btn,
 	})
-	pad(9, 9, 9, 9, iconLabel)
-	iconLabel:FindFirstChildOfClass("UIPadding").PaddingTop = UDim.new(0, 9)
+	pad(10, 10, 10, 10, iconLabel)
 
-	-- active indicator (left bar)
 	local indicator = make("Frame", {
 		Size = UDim2.new(0, 5, 0, 0),
 		Position = UDim2.new(-0.35, 0, 0.5, 0),
@@ -804,6 +772,7 @@ function UI:CreateTab(name, icon)
 		ClipsDescendants = true,
 		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
+		ZIndex = 20,
 		Parent = btn,
 	})
 	corner(7, tip)
@@ -815,31 +784,28 @@ function UI:CreateTab(name, icon)
 	tab._tooltip = tip
 	tab._stroke = btnStroke
 
-	-- Content frame
 	local content = make("Frame", {
 		Name = "TabContent_" .. name,
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		Visible = false,
-		Parent = self.Content
+		Parent = self.Content,
 	})
 	tab._content = content
 
-	-- each tab's section list
-	local layout = make("UIListLayout", {
+	make("UIListLayout", {
 		Padding = UDim.new(0, 12),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = content,
 	})
-	tab._layout = layout
 
-	-- Hover
 	btn.MouseEnter:Connect(function()
 		if tab._active then return end
 		tw(btn, 0.22, { BackgroundColor3 = th.Background, Position = UDim2.new(0, 2, 0, 0) }, "outBack")
 		tw(btnStroke, 0.2, { Transparency = 0 }, "outQuad")
 		tw(iconLabel, 0.2, { TextColor3 = th.TextPrimary }, "outQuad")
-		tw(tip, 0.18, { BackgroundTransparency = 0, TextTransparency = 0, Visible = true, Size = UDim2.new(0, tip.AbsoluteSize.X, 0, 22) }, "outBack")
+		tip.Visible = true
+		tw(tip, 0.18, { BackgroundTransparency = 0, TextTransparency = 0 }, "outBack")
 	end)
 	btn.MouseLeave:Connect(function()
 		if tab._active then return end
@@ -847,7 +813,7 @@ function UI:CreateTab(name, icon)
 		tw(btnStroke, 0.2, { Transparency = 1 }, "outQuad")
 		tw(iconLabel, 0.2, { TextColor3 = th.TextSecondary }, "outQuad")
 		tw(tip, 0.15, { BackgroundTransparency = 1, TextTransparency = 1 }, "outQuad")
-		delay(0.16, function() tip.Visible = false end)
+		task.delay(0.16, function() tip.Visible = false end)
 	end)
 
 	btn.MouseButton1Click:Connect(function()
@@ -857,17 +823,14 @@ function UI:CreateTab(name, icon)
 	table.insert(self.Tabs, tab)
 	table.insert(self.TabButtons, btn)
 
-	-- auto-select first tab
 	if #self.Tabs == 1 then
 		task.defer(function() self:SelectTab(tab, true) end)
 	end
 
-	-- attach section-maker
 	function tab:CreateSection(title)
 		return self._ui:_createSection(self, title)
 	end
 
-	tab._active = false
 	return tab
 end
 
@@ -878,7 +841,6 @@ function UI:SelectTab(tab, instant)
 	local oldTab = self.ActiveTab
 	self.ActiveTab = tab
 
-	-- Rail button states
 	for _, t in ipairs(self.Tabs) do
 		t._active = (t == tab)
 		local isActive = t._active
@@ -901,18 +863,9 @@ function UI:SelectTab(tab, instant)
 		end
 	end
 
-	-- Content transitions
 	if oldTab and not instant then
-		-- dissolve + slide out
 		local oc = oldTab._content
 		tw(oc, 0.18, { Position = UDim2.fromOffset(-20, 0) }, "inQuad")
-		customTween(0.22, Ease.inQuad, function(a)
-			for _, d in ipairs(oc:GetDescendants()) do
-				if d:IsA("GuiObject") then
-					-- fade
-				end
-			end
-		end)
 		task.delay(0.2, function()
 			oc.Visible = false
 			oc.Position = UDim2.fromOffset(0, 0)
@@ -921,28 +874,27 @@ function UI:SelectTab(tab, instant)
 
 	if not instant then task.wait(0.08) end
 
-	-- New tab in
 	local nc = tab._content
 	nc.Visible = true
 	nc.Position = UDim2.fromOffset(24, 0)
-
 	tw(nc, 0.42, { Position = UDim2.fromOffset(0, 0) }, "outExpo")
 
-	-- Stagger children rise
 	local i = 0
 	for _, child in ipairs(nc:GetChildren()) do
 		if child:IsA("GuiObject") then
 			i += 1
 			local targetPos = child.Position
+			local targetTr = child.BackgroundTransparency
 			child.Position = targetPos + UDim2.fromOffset(0, 14)
-			child.BackgroundTransparency = child.BackgroundTransparency + 0.5
-			tw(child, 0.4, { Position = targetPos, BackgroundTransparency = math.max(0, child.BackgroundTransparency - 0.5) }, "outExpo", 0.02 + i * 0.04)
+			child.BackgroundTransparency = math.min(1, targetTr + 0.5)
+			tw(child, 0.4, {
+				Position = targetPos,
+				BackgroundTransparency = targetTr,
+			}, "outExpo", 0.02 + i * 0.04)
 		end
 	end
 end
 
--- ─────────────────────────────────────────────────────────────
--- SECTIONS
 -- ─────────────────────────────────────────────────────────────
 function UI:_createSection(tab, title)
 	local th = self.Theme
@@ -967,7 +919,6 @@ function UI:_createSection(tab, title)
 	})
 	section._holder = holder
 
-	-- Section header
 	local header = make("Frame", {
 		Size = UDim2.new(1, 0, 0, 18),
 		BackgroundTransparency = 1,
@@ -990,8 +941,8 @@ function UI:_createSection(tab, title)
 	section._titleLabel = titleLabel
 
 	local dash = make("Frame", {
-		Size = UDim2.new(1, -titleLabel.AbsoluteSize.X - 12, 0, 2),
-		Position = UDim2.new(0, titleLabel.AbsoluteSize.X + 12, 0.5, 0),
+		Size = UDim2.new(1, -100, 0, 2),
+		Position = UDim2.new(0, 100, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		BackgroundColor3 = th.TextSecondary,
 		BackgroundTransparency = 0.6,
@@ -1006,7 +957,6 @@ function UI:_createSection(tab, title)
 		dash.Size = UDim2.new(1, -w - 12, 0, 2)
 	end)
 
-	-- API
 	function section:CreateButton(text, callback)
 		return self._ui:_createButton(self, text, callback)
 	end
@@ -1033,8 +983,6 @@ function UI:_createSection(tab, title)
 end
 
 -- ─────────────────────────────────────────────────────────────
--- SHARED CARD
--- ─────────────────────────────────────────────────────────────
 function UI:_createCard(parent, height, layoutOrder)
 	local th = self.Theme
 	local card = make("Frame", {
@@ -1048,10 +996,8 @@ function UI:_createCard(parent, height, layoutOrder)
 		Parent = parent._holder,
 	})
 	corner(11, card)
-	local s = stroke(th.Border, 2, card, 1) -- start hidden; we fade in
-	s.Transparency = 1
+	local s = stroke(th.Border, 2, card, 1)
 
-	-- shadow via subtle gradient frame behind
 	local shadow = make("Frame", {
 		Name = "CardShadow",
 		Size = UDim2.new(1, 0, 1, 0),
@@ -1064,39 +1010,36 @@ function UI:_createCard(parent, height, layoutOrder)
 	})
 	corner(11, shadow)
 
-	-- fade in nicely
+	-- Store references (Instance нельзя расширять полями)
+	Store.set(card, "stroke", s)
+	Store.set(card, "shadow", shadow)
+
 	tw(card, 0.4, { BackgroundTransparency = 0 }, "outExpo")
 	tw(s, 0.4, { Transparency = 0 }, "outExpo")
 	tw(shadow, 0.4, { BackgroundTransparency = 0.06 }, "outExpo")
 
-	card._stroke = s
-	card._shadow = shadow
 	return card
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
--- TILT EFFECT
+-- TILT
 -- ═══════════════════════════════════════════════════════════════════════
 function UI:_applyTilt(frame, opts)
 	opts = opts or {}
-	local strength = opts.strength or 3       -- degrees max
-	local scaleAmp = opts.scale or 1.02       -- scale when hovered
-	local lift = opts.lift or 2               -- y offset
+	local strength = opts.strength or 3
+	local lift = opts.lift or 2
 	local basePos = frame.Position
-	local baseSize = frame.Size
 	local baseRot = frame.Rotation or 0
 
 	local hovered = false
+	local conn
 
-	frame.MouseEnter:Connect(function()
-		hovered = true
-	end)
+	frame.MouseEnter:Connect(function() hovered = true end)
 	frame.MouseLeave:Connect(function()
 		hovered = false
 		tw(frame, 0.4, { Rotation = baseRot, Position = basePos }, "outBack")
 	end)
 
-	local conn
 	conn = RunService.RenderStepped:Connect(function()
 		if not hovered or not frame.Parent then return end
 		local mouse = UserInputService:GetMouseLocation()
@@ -1105,34 +1048,34 @@ function UI:_applyTilt(frame, opts)
 		if sz.X <= 0 or sz.Y <= 0 then return end
 		local cx = abs.X + sz.X / 2
 		local cy = abs.Y + sz.Y / 2
-		local dx = (mouse.X - cx) / (sz.X / 2)
-		local dy = (mouse.Y - cy) / (sz.Y / 2)
-		dx = math.clamp(dx, -1, 1)
-		dy = math.clamp(dy, -1, 1)
-		local rotZ = -dx * strength
-		local yOff = basePos.Y.Offset + (dy * -lift)
-		local xOff = basePos.X.Offset + (dx * 1.5)
-		frame.Rotation = rotZ
-		frame.Position = UDim2.new(basePos.X.Scale, xOff, basePos.Y.Scale, yOff)
+		local dx = math.clamp((mouse.X - cx) / (sz.X / 2), -1, 1)
+		local dy = math.clamp((mouse.Y - cy) / (sz.Y / 2), -1, 1)
+		frame.Rotation = -dx * strength
+		frame.Position = UDim2.new(basePos.X.Scale, basePos.X.Offset + dx * 1.5, basePos.Y.Scale, basePos.Y.Offset - dy * lift)
 	end)
-	frame.Destroying = nil
+
+	-- Правильная очистка вместо frame.Destroying = nil
+	local cleanupDone = false
 	local function cleanup()
-		if conn then conn:Disconnect() end
+		if cleanupDone then return end
+		cleanupDone = true
+		if conn then conn:Disconnect() conn = nil end
 	end
+	frame.Destroying:Connect(cleanup)
 	frame.AncestryChanged:Connect(function(_, parent)
 		if not parent then cleanup() end
 	end)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
--- BUTTONS
+-- BUTTON
 -- ═══════════════════════════════════════════════════════════════════════
 function UI:_createButton(section, text, callback)
 	local th = self.Theme
 	local card = self:_createCard(section, 46)
 	card.Name = "Button_" .. text
+	local shadow = Store.get(card, "shadow")
 
-	-- Make whole card clickable
 	local click = make("TextButton", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
@@ -1154,7 +1097,6 @@ function UI:_createButton(section, text, callback)
 		Parent = card,
 	})
 
-	-- ink ripple
 	local function ink(x, y)
 		local ripple = make("Frame", {
 			Size = UDim2.fromOffset(6, 6),
@@ -1174,35 +1116,34 @@ function UI:_createButton(section, text, callback)
 		task.delay(0.6, function() ripple:Destroy() end)
 	end
 
-	local scale = 1
-	local function hoverIn()
+	click.MouseEnter:Connect(function()
 		tw(card, 0.2, {
 			Position = UDim2.new(card.Position.X.Scale, card.Position.X.Offset - 2, card.Position.Y.Scale, card.Position.Y.Offset - 2),
 			BackgroundColor3 = th.Surface,
 		}, "outBack")
-		tw(card._shadow, 0.2, { Position = UDim2.fromOffset(6, 6), BackgroundTransparency = 0 }, "outBack")
-	end
-	local function hoverOut()
+		if shadow then
+			tw(shadow, 0.2, { Position = UDim2.fromOffset(6, 6), BackgroundTransparency = 0 }, "outBack")
+		end
+	end)
+	click.MouseLeave:Connect(function()
 		tw(card, 0.28, {
 			Position = UDim2.new(card.Position.X.Scale, card.Position.X.Offset + 2, card.Position.Y.Scale, card.Position.Y.Offset + 2),
 			BackgroundColor3 = th.Background,
 		}, "outBack")
-		tw(card._shadow, 0.28, { Position = UDim2.fromOffset(3, 3), BackgroundTransparency = 0.06 }, "outBack")
-	end
-
-	click.MouseEnter:Connect(hoverIn)
-	click.MouseLeave:Connect(hoverOut)
+		if shadow then
+			tw(shadow, 0.28, { Position = UDim2.fromOffset(3, 3), BackgroundTransparency = 0.06 }, "outBack")
+		end
+	end)
 	click.MouseButton1Down:Connect(function()
 		tw(card, 0.1, { BackgroundColor3 = th.Surface }, "outQuad")
-		label.TextColor3 = th.TextPrimary
 	end)
 	click.MouseButton1Up:Connect(function()
 		tw(card, 0.15, { BackgroundColor3 = th.Surface }, "outBack")
 	end)
 
 	click.MouseButton1Click:Connect(function()
-		local mx, my = UserInputService:GetMouseLocation().X - card.AbsolutePosition.X, UserInputService:GetMouseLocation().Y - card.AbsolutePosition.Y
-		ink(mx, my)
+		local mouse = UserInputService:GetMouseLocation()
+		ink(mouse.X - card.AbsolutePosition.X, mouse.Y - card.AbsolutePosition.Y)
 		tw(label, 0.08, { TextColor3 = th.TextSecondary }, "outQuad")
 		task.delay(0.15, function()
 			tw(label, 0.2, { TextColor3 = th.TextPrimary }, "outQuad")
@@ -1210,8 +1151,7 @@ function UI:_createButton(section, text, callback)
 		if callback then task.spawn(callback) end
 	end)
 
-	-- Tilt effect
-	self:_applyTilt(card, { strength = 2.5, scale = 1.01, lift = 1 })
+	self:_applyTilt(card, { strength = 2.5, lift = 1 })
 
 	return {
 		Frame = card,
@@ -1221,13 +1161,14 @@ function UI:_createButton(section, text, callback)
 	}
 end
 
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
 -- TOGGLE
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
 function UI:_createToggle(section, text, default, callback)
 	local th = self.Theme
 	local card = self:_createCard(section, 46)
 	card.Name = "Toggle_" .. text
+	local shadow = Store.get(card, "shadow")
 
 	local label = make("TextLabel", {
 		Size = UDim2.new(1, -90, 1, 0),
@@ -1264,6 +1205,20 @@ function UI:_createToggle(section, text, default, callback)
 	})
 	corner(999, knob)
 
+	local glow = make("Frame", {
+		Name = "Glow",
+		Size = UDim2.new(1, 6, 1, 6),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = th.Neon,
+		BackgroundTransparency = 0.7,
+		BorderSizePixel = 0,
+		ZIndex = -1,
+		Visible = false,
+		Parent = switch,
+	})
+	corner(999, glow)
+
 	local click = make("TextButton", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
@@ -1284,22 +1239,6 @@ function UI:_createToggle(section, text, default, callback)
 				BackgroundColor3 = th.Background,
 			}, "outBack")
 			tw(switchStroke, dur, { Color = th.Accent }, "outQuad")
-			-- glow
-			local glow = switch:FindFirstChild("Glow")
-			if not glow then
-				glow = make("Frame", {
-					Name = "Glow",
-					Size = UDim2.new(1, 6, 1, 6),
-					Position = UDim2.fromScale(0.5, 0.5),
-					AnchorPoint = Vector2.new(0.5, 0.5),
-					BackgroundColor3 = th.Neon,
-					BackgroundTransparency = 0.7,
-					BorderSizePixel = 0,
-					ZIndex = -1,
-					Parent = switch,
-				})
-				corner(999, glow)
-			end
 			glow.Visible = true
 		else
 			tw(switch, dur, { BackgroundColor3 = th.Background }, "outBack")
@@ -1308,8 +1247,7 @@ function UI:_createToggle(section, text, default, callback)
 				BackgroundColor3 = th.Border,
 			}, "outBack")
 			tw(switchStroke, dur, { Color = th.Border }, "outQuad")
-			local glow = switch:FindFirstChild("Glow")
-			if glow then glow.Visible = false end
+			glow.Visible = false
 		end
 	end
 
@@ -1318,7 +1256,6 @@ function UI:_createToggle(section, text, default, callback)
 	click.MouseButton1Click:Connect(function()
 		value = not value
 		applyVisual(value, true)
-		-- knob squash effect
 		tw(knob, 0.1, { Size = UDim2.fromOffset(22, 18) }, "outQuad")
 		task.delay(0.1, function()
 			tw(knob, 0.25, { Size = UDim2.fromOffset(18, 18) }, "outBack")
@@ -1326,14 +1263,16 @@ function UI:_createToggle(section, text, default, callback)
 		if callback then task.spawn(function() callback(value) end) end
 	end)
 
-	local function hoverIn()
-		tw(card._shadow, 0.2, { Position = UDim2.fromOffset(5, 5), BackgroundTransparency = 0 }, "outBack")
-	end
-	local function hoverOut()
-		tw(card._shadow, 0.28, { Position = UDim2.fromOffset(3, 3), BackgroundTransparency = 0.06 }, "outBack")
-	end
-	click.MouseEnter:Connect(hoverIn)
-	click.MouseLeave:Connect(hoverOut)
+	click.MouseEnter:Connect(function()
+		if shadow then
+			tw(shadow, 0.2, { Position = UDim2.fromOffset(5, 5), BackgroundTransparency = 0 }, "outBack")
+		end
+	end)
+	click.MouseLeave:Connect(function()
+		if shadow then
+			tw(shadow, 0.28, { Position = UDim2.fromOffset(3, 3), BackgroundTransparency = 0.06 }, "outBack")
+		end
+	end)
 
 	return {
 		Frame = card,
@@ -1345,17 +1284,18 @@ function UI:_createToggle(section, text, default, callback)
 	}
 end
 
--- ─────────────────────────────────────────────────────────────
--- DANGER BUTTON (hold-to-activate)
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
+-- DANGER BUTTON
+-- ═══════════════════════════════════════════════════════════════════════
 function UI:_createDangerButton(section, text, holdTime, callback)
 	local th = self.Theme
 	holdTime = holdTime or 1.0
 
 	local card = self:_createCard(section, 46)
 	card.Name = "Danger_" .. text
+	local cardStroke = Store.get(card, "stroke")
+	local cardShadow = Store.get(card, "shadow")
 
-	-- progress fill (from left)
 	local fill = make("Frame", {
 		Name = "Fill",
 		Size = UDim2.new(0, 0, 1, 0),
@@ -1366,8 +1306,7 @@ function UI:_createDangerButton(section, text, holdTime, callback)
 		Parent = card,
 	})
 	corner(11, fill)
-
-	local fillGradient = gradient(fill, th.Bad, Color3.fromRGB(255, 100, 100), 90)
+	gradient(fill, th.Bad, Color3.fromRGB(255, 100, 100), 90)
 
 	local click = make("TextButton", {
 		Size = UDim2.fromScale(1, 1),
@@ -1391,9 +1330,8 @@ function UI:_createDangerButton(section, text, holdTime, callback)
 		Parent = card,
 	})
 
-	-- hint "hold"
 	local hint = make("TextLabel", {
-		Size = UDim2.new(0, 80, 1, 0),
+		Size = UDim2.new(0, 120, 1, 0),
 		Position = UDim2.new(1, -14, 0, 0),
 		AnchorPoint = Vector2.new(1, 0),
 		BackgroundTransparency = 1,
@@ -1410,20 +1348,12 @@ function UI:_createDangerButton(section, text, holdTime, callback)
 	local progress = 0
 	local renderConn
 
-	-- color shift for card stroke while holding
-	local origStrokeColor = th.Border
-
-	local function updateFill()
-		tw(fill, 0.05, { Size = UDim2.new(progress, 0, 1, 0) }, "linear")
-	end
-
 	local function stopHold(cancelled)
 		holding = false
 		if renderConn then renderConn:Disconnect() renderConn = nil end
 		if cancelled or progress < 1 then
-			-- snap back
 			tw(fill, 0.4, { Size = UDim2.new(0, 0, 1, 0) }, "outCubic")
-			tw(card._stroke, 0.3, { Color = origStrokeColor, Thickness = 2 }, "outQuad")
+			if cardStroke then tw(cardStroke, 0.3, { Color = th.Border, Thickness = 2 }, "outQuad") end
 			tw(label, 0.3, { TextColor3 = th.Bad }, "outQuad")
 			tw(hint, 0.3, { TextTransparency = 0 }, "outQuad")
 			progress = 0
@@ -1435,35 +1365,30 @@ function UI:_createDangerButton(section, text, holdTime, callback)
 		holding = true
 		progress = 0
 		tw(hint, 0.2, { TextTransparency = 1 }, "outQuad")
-		tw(card._stroke, 0.2, { Color = th.Bad, Thickness = 2.5 }, "outQuad")
+		if cardStroke then tw(cardStroke, 0.2, { Color = th.Bad, Thickness = 2.5 }, "outQuad") end
 
 		local startTime = tick()
 		renderConn = RunService.RenderStepped:Connect(function()
 			if not holding then return end
 			local elapsed = tick() - startTime
 			progress = math.clamp(elapsed / holdTime, 0, 1)
-			-- spring-ish pulse: fill width grows with slight overshoot at end
 			local w = Ease.outQuad(progress)
 			fill.Size = UDim2.new(w, 0, 1, 0)
-			-- label color flips when nearly done
 			local tc = th.Bad:Lerp(th.Background, math.clamp(progress * 1.4, 0, 1))
 			label.TextColor3 = tc
-			-- subtle rotation wobble
 			card.Rotation = math.sin(elapsed * 30) * (progress * 0.8)
 
 			if progress >= 1 then
 				holding = false
 				if renderConn then renderConn:Disconnect() renderConn = nil end
 				card.Rotation = 0
-				-- "success" flash
 				tw(fill, 0.2, { BackgroundColor3 = th.Good }, "outQuad")
-				tw(card._stroke, 0.2, { Color = th.Good, Thickness = 3 }, "outQuad")
+				if cardStroke then tw(cardStroke, 0.2, { Color = th.Good, Thickness = 3 }, "outQuad") end
 				task.delay(0.35, function()
-					tw(card._stroke, 0.4, { Color = origStrokeColor, Thickness = 2 }, "outQuad")
+					if cardStroke then tw(cardStroke, 0.4, { Color = th.Border, Thickness = 2 }, "outQuad") end
 					tw(fill, 0.4, { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = th.Bad }, "outCubic")
 					tw(label, 0.3, { TextColor3 = th.Bad }, "outQuad")
 					tw(hint, 0.3, { TextTransparency = 0 }, "outQuad")
-					task.wait(0.05)
 					progress = 0
 				end)
 				if callback then task.spawn(callback) end
@@ -1473,12 +1398,16 @@ function UI:_createDangerButton(section, text, holdTime, callback)
 
 	click.MouseButton1Down:Connect(startHold)
 	click.MouseButton1Up:Connect(function() stopHold(true) end)
-	click.MouseLeave:Connect(function() if holding then stopHold(true) end end)
-	click.MouseEnter:Connect(function()
-		tw(card._shadow, 0.2, { Position = UDim2.fromOffset(5, 5), BackgroundTransparency = 0 }, "outBack")
-	end)
 	click.MouseLeave:Connect(function()
-		tw(card._shadow, 0.28, { Position = UDim2.fromOffset(3, 3), BackgroundTransparency = 0.06 }, "outBack")
+		if holding then stopHold(true) end
+		if cardShadow then
+			tw(cardShadow, 0.28, { Position = UDim2.fromOffset(3, 3), BackgroundTransparency = 0.06 }, "outBack")
+		end
+	end)
+	click.MouseEnter:Connect(function()
+		if cardShadow then
+			tw(cardShadow, 0.2, { Position = UDim2.fromOffset(5, 5), BackgroundTransparency = 0 }, "outBack")
+		end
 	end)
 
 	self:_applyTilt(card, { strength = 2, lift = 1 })
@@ -1489,23 +1418,23 @@ function UI:_createDangerButton(section, text, holdTime, callback)
 	}
 end
 
--- ─────────────────────────────────────────────────────────────
--- SLIDER  (color shifts toward red as value → max)
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
+-- SLIDER
+-- ═══════════════════════════════════════════════════════════════════════
 function UI:_createSlider(section, text, min, max, default, callback, opts)
 	opts = opts or {}
 	local th = self.Theme
 	min = min or 0
 	max = max or 100
-	default = default or min
-	local colorA = opts.colorStart or th.Accent     -- color at min
-	local colorB = opts.colorEnd or th.Bad          -- color at max
+	default = math.clamp(default or min, min, max)
+	local colorA = opts.colorStart or th.Accent
+	local colorB = opts.colorEnd or th.Bad
 	local unitSuffix = opts.suffix or ""
 
 	local card = self:_createCard(section, 62)
 	card.Name = "Slider_" .. text
+	local cardStroke = Store.get(card, "stroke")
 
-	-- top row: label + value
 	local label = make("TextLabel", {
 		Size = UDim2.new(0.7, 0, 0, 18),
 		Position = UDim2.fromOffset(14, 8),
@@ -1531,9 +1460,8 @@ function UI:_createSlider(section, text, min, max, default, callback, opts)
 		Parent = card,
 	})
 	corner(7, valueBox)
-	local vbStroke = stroke(th.Border, 1.5, valueBox)
+	stroke(th.Border, 1.5, valueBox)
 
-	-- track
 	local track = make("Frame", {
 		Name = "Track",
 		Size = UDim2.new(1, -28, 0, 6),
@@ -1555,7 +1483,6 @@ function UI:_createSlider(section, text, min, max, default, callback, opts)
 	corner(3, trackFill)
 	local fillGrad = gradient(trackFill, colorA, colorA, 0)
 
-	-- thumb
 	local thumb = make("Frame", {
 		Name = "Thumb",
 		Size = UDim2.fromOffset(20, 20),
@@ -1568,16 +1495,6 @@ function UI:_createSlider(section, text, min, max, default, callback, opts)
 	})
 	corner(7, thumb)
 	local thumbStroke = stroke(th.Border, 2, thumb)
-	-- thumb mini shadow
-	make("Frame", {
-		Size = UDim2.fromScale(1, 1),
-		Position = UDim2.fromOffset(2, 2),
-		BackgroundColor3 = th.Shadow,
-		BackgroundTransparency = 0.6,
-		BorderSizePixel = 0,
-		ZIndex = -1,
-		Parent = thumb,
-	}).Parent = thumb
 
 	local clickable = make("TextButton", {
 		Size = UDim2.new(1, 0, 0, 34),
@@ -1590,7 +1507,7 @@ function UI:_createSlider(section, text, min, max, default, callback, opts)
 		Parent = card,
 	})
 
-	local value = math.clamp(default, min, max)
+	local value = default
 	local dragging = false
 
 	local function updateVisual()
@@ -1599,7 +1516,6 @@ function UI:_createSlider(section, text, min, max, default, callback, opts)
 		tw(thumb, 0.1, { Position = UDim2.new(p, 0, 0.5, 0) }, "outQuad")
 		valueBox.Text = tostring(math.floor(value * 100 + 0.5) / 100) .. unitSuffix
 
-		-- color lerp toward colorB as value increases
 		local c = colorA:Lerp(colorB, p)
 		tw(trackFill, 0.15, { BackgroundColor3 = c }, "outQuad")
 		fillGrad.Color = ColorSequence.new({
@@ -1607,8 +1523,9 @@ function UI:_createSlider(section, text, min, max, default, callback, opts)
 			ColorSequenceKeypoint.new(1, c),
 		})
 
-		-- card border tints too
-		tw(card._stroke, 0.15, { Color = th.Border:Lerp(colorB, p * 0.55) }, "outQuad")
+		if cardStroke then
+			tw(cardStroke, 0.15, { Color = th.Border:Lerp(colorB, p * 0.55) }, "outQuad")
+		end
 	end
 
 	updateVisual()
@@ -1618,8 +1535,7 @@ function UI:_createSlider(section, text, min, max, default, callback, opts)
 		local szX = track.AbsoluteSize.X
 		if szX <= 0 then return end
 		local p = math.clamp((input.Position.X - absX) / szX, 0, 1)
-		local newV = min + (max - min) * p
-		value = newV
+		value = min + (max - min) * p
 		updateVisual()
 		if callback then task.spawn(function() callback(value) end) end
 	end
@@ -1628,17 +1544,18 @@ function UI:_createSlider(section, text, min, max, default, callback, opts)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			setFromInput(input)
-			-- thumb pulse
 			tw(thumb, 0.15, { Size = UDim2.fromOffset(24, 24) }, "outBack")
-			thumbStroke.Transparency = 0
 			tw(thumbStroke, 0.15, { Thickness = 2.5 }, "outBack")
 		end
 	end)
-	UserInputService.InputChanged:Connect(function(input)
+
+	local uisConn
+	uisConn = UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			setFromInput(input)
 		end
 	end)
+
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			if dragging then
@@ -1658,15 +1575,15 @@ function UI:_createSlider(section, text, min, max, default, callback, opts)
 	}
 end
 
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
 -- TEXT BOX
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
 function UI:_createTextBox(section, text, placeholder, callback)
 	local th = self.Theme
 	local card = self:_createCard(section, 66)
 	card.Name = "TextBox_" .. text
 
-	local label = make("TextLabel", {
+	make("TextLabel", {
 		Size = UDim2.new(1, -28, 0, 16),
 		Position = UDim2.fromOffset(14, 8),
 		BackgroundTransparency = 1,
@@ -1707,40 +1624,52 @@ function UI:_createTextBox(section, text, placeholder, callback)
 		if callback then task.spawn(function() callback(box.Text, enterPressed) end) end
 	end)
 
-	return { Frame = card, Get = function() return box.Text end, Set = function(_, v) box.Text = v end }
+	return {
+		Frame = card,
+		Get = function() return box.Text end,
+		Set = function(_, v) box.Text = v end,
+	}
 end
 
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
 -- LABEL
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
 function UI:_createLabel(section, text)
 	local th = self.Theme
 	local card = self:_createCard(section, 30)
 	card.Name = "Label"
+	card.AutomaticSize = Enum.AutomaticSize.Y
+
 	local label = make("TextLabel", {
-		Size = UDim2.new(1, -24, 1, 0),
+		Size = UDim2.new(1, -24, 0, 30),
 		Position = UDim2.fromOffset(12, 0),
 		BackgroundTransparency = 1,
 		Text = text,
 		TextColor3 = th.TextSecondary,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
 		Font = Enum.Font.Gotham,
 		TextSize = 12,
 		TextWrapped = true,
+		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = card,
 	})
-	card.AutomaticSize = Enum.AutomaticSize.Y
-	return { Frame = card, Set = function(_, t) label.Text = t end }
+
+	return {
+		Frame = card,
+		Set = function(_, t) label.Text = t end,
+	}
 end
 
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
 -- CHANGELOG
--- ─────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════════════════
 function UI:_createChangelog(section, title, entries)
 	local th = self.Theme
 
 	local card = self:_createCard(section, 30)
 	card.Name = "Changelog"
+	card.AutomaticSize = Enum.AutomaticSize.Y
 
 	local header = make("TextLabel", {
 		Size = UDim2.new(1, -24, 0, 28),
@@ -1766,12 +1695,11 @@ function UI:_createChangelog(section, title, entries)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = list,
 	})
-	card.AutomaticSize = Enum.AutomaticSize.Y
 
-	-- full-screen modal holder (created lazily)
-	local modal
+	local modal -- создадим при первом клике
 	local function ensureModal()
 		if modal and modal.Parent then return modal end
+
 		modal = make("Frame", {
 			Name = "ChangelogModal",
 			Size = UDim2.fromScale(1, 1),
@@ -1832,27 +1760,24 @@ function UI:_createChangelog(section, title, entries)
 		})
 		pad(0, 20, 4, 20, scroll)
 
+		-- store refs
+		Store.set(modal, "title", modalTitle)
+		Store.set(modal, "scroll", scroll)
+		Store.set(modal, "closeBtn", closeBtn)
+
 		local close = function()
-			-- dissolve out
 			customTween(0.25, Ease.inQuad, function(a)
 				modal.BackgroundTransparency = 1 - (1 - a) * 0.94
-				for _, c in ipairs(scroll:GetChildren()) do
-					if c:IsA("GuiObject") then c.BackgroundTransparency = math.min(1, c.BackgroundTransparency + a * 0.5) end
-				end
 			end)
 			tw(scroll, 0.25, { Position = UDim2.fromOffset(30, 88) }, "inQuad")
 			task.delay(0.26, function() modal.Visible = false end)
 		end
 		closeBtn.MouseButton1Click:Connect(close)
-
-		modal._title = modalTitle
-		modal._scroll = scroll
-		modal._close = close
+		Store.set(modal, "close", close)
 
 		return modal
 	end
 
-	-- add each entry as a "button"
 	for i, entry in ipairs(entries) do
 		local entryBtn = make("TextButton", {
 			Size = UDim2.new(1, 0, 0, 34),
@@ -1892,7 +1817,6 @@ function UI:_createChangelog(section, title, entries)
 			Parent = entryBtn,
 		})
 
-		-- hover: bigger + darker (as requested)
 		entryBtn.MouseEnter:Connect(function()
 			tw(entryBtn, 0.25, {
 				Size = UDim2.new(1, 6, 0, 38),
@@ -1912,15 +1836,12 @@ function UI:_createChangelog(section, title, entries)
 			tw(badge, 0.2, { Size = UDim2.fromOffset(40, 18) }, "outBack")
 		end)
 
-		-- click → modal full-screen
 		entryBtn.MouseButton1Click:Connect(function()
 			local m = ensureModal()
-			local sc = m._scroll
-			-- clear
+			local sc = Store.get(m, "scroll")
 			for _, c in ipairs(sc:GetChildren()) do
 				if c:IsA("GuiObject") then c:Destroy() end
 			end
-			-- populate with all entries (highlight current)
 			for j, e in ipairs(entries) do
 				local row = make("Frame", {
 					Size = UDim2.new(1, 0, 0, 0),
@@ -1931,7 +1852,7 @@ function UI:_createChangelog(section, title, entries)
 					Parent = sc,
 				})
 				corner(12, row)
-				local rs = stroke(th.Border, 2, row, 0)
+				stroke(th.Border, 2, row, 0)
 				pad(14, 14, 16, 16, row)
 
 				local bdg = make("TextLabel", {
@@ -1961,7 +1882,6 @@ function UI:_createChangelog(section, title, entries)
 					Parent = row,
 				})
 
-				-- animate in with stagger
 				row.BackgroundTransparency = 1
 				txt.TextTransparency = 1
 				tw(row, 0.35, { BackgroundTransparency = 0 }, "outExpo", j * 0.04)
@@ -1977,7 +1897,6 @@ function UI:_createChangelog(section, title, entries)
 			tw(sc, 0.45, { Position = UDim2.fromOffset(30, 78) }, "outExpo")
 		end)
 
-		-- subtle stagger-in
 		entryBtn.BackgroundTransparency = 1
 		lbl.TextTransparency = 1
 		badge.TextTransparency = 1
@@ -1986,7 +1905,6 @@ function UI:_createChangelog(section, title, entries)
 		tw(badge, 0.4, { TextTransparency = 0 }, "outExpo", i * 0.05)
 	end
 
-	-- fix card size
 	card.Size = UDim2.new(1, 0, 0, 30 + #entries * 40 + 8)
 
 	return { Frame = card }
@@ -2009,7 +1927,6 @@ end
 
 function UI:_retheme()
 	local th = self.Theme
-	-- main
 	tw(self.Frame, 0.35, { BackgroundColor3 = th.Background }, "outQuad")
 	tw(self.MainStroke, 0.35, { Color = th.Border }, "outQuad")
 	tw(self.Shadow, 0.35, { BackgroundColor3 = th.Shadow }, "outQuad")
@@ -2023,7 +1940,6 @@ function UI:_retheme()
 	tw(self.FooterLeft, 0.35, { TextColor3 = th.TextSecondary }, "outQuad")
 	tw(self.FooterRight, 0.35, { TextColor3 = th.TextSecondary }, "outQuad")
 
-	-- neon outline glow for dark themes
 	if th.IsDark then
 		tw(self.NeonStroke, 0.5, { Transparency = 0.4, Color = th.Neon }, "outQuad")
 	else
@@ -2032,7 +1948,7 @@ function UI:_retheme()
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
--- SHOW / HIDE (dissolve + shrink animations)
+-- SHOW / HIDE
 -- ═══════════════════════════════════════════════════════════════════════
 function UI:Show()
 	if self.IsOpen then return end
@@ -2041,7 +1957,6 @@ function UI:Show()
 	self.Frame.Visible = true
 	self.Shadow.Visible = true
 
-	-- start small, transparent, rotated
 	self.Frame.Size = UDim2.new(0, 0, 0, 0)
 	self.Frame.Position = UDim2.new(0.5, 0, 0.5, 0)
 	self.Frame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -2050,7 +1965,6 @@ function UI:Show()
 	self.Shadow.BackgroundTransparency = 1
 	self.Shadow.Position = UDim2.fromOffset(0, 0)
 
-	-- "dissolve + shrink"
 	customTween(0.45, Ease.outBack, function(a)
 		self.Frame.BackgroundTransparency = 1 - a
 		self.Frame.Rotation = 8 * (1 - a)
@@ -2065,7 +1979,6 @@ function UI:Show()
 		Transparency = self.Theme.IsDark and 0.4 or 1,
 	}, "outExpo")
 
-	-- logo pop
 	local logoSize = self.Logo.Size
 	self.Logo.Size = UDim2.fromOffset(0, 0)
 	tw(self.Logo, 0.55, { Size = logoSize }, "outBack", 0.15)
@@ -2075,15 +1988,12 @@ function UI:Hide()
 	if not self.IsOpen then return end
 	self.IsOpen = false
 
-	-- "испаряется + уменьшается"
 	customTween(0.35, Ease.inBack, function(a)
 		self.Frame.BackgroundTransparency = a
 		self.Frame.Rotation = 6 * a
 	end)
 	tw(self.Shadow, 0.35, { BackgroundTransparency = 1, Position = UDim2.fromOffset(2, 2) }, "inBack")
-	tw(self.Frame, 0.35, {
-		Size = UDim2.fromOffset(40, 40),
-	}, "inBack")
+	tw(self.Frame, 0.35, { Size = UDim2.fromOffset(40, 40) }, "inBack")
 	tw(self.MainStroke, 0.3, { Transparency = 1 }, "inQuad")
 
 	task.delay(0.36, function()
@@ -2107,18 +2017,4 @@ function UI:ToggleMinimize()
 	tw(self.Container, 0.45, { Size = UDim2.fromOffset(self.WindowSize.X.Offset, target) }, "outBack")
 end
 
--- ═══════════════════════════════════════════════════════════════════════
--- KEYBINDS  (Insert opens, Escape closes)
--- ═══════════════════════════════════════════════════════════════════════
-UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	if input.KeyCode == Enum.KeyCode.Insert then
-		-- toggle if our gui exists in PlayerGui
-		if PlayerGui:FindFirstChild("DulbanUI") or #PlayerGui:GetChildren() > 0 then
-			-- handled per-instance below
-		end
-	end
-end)
-
--- return
 return UI
