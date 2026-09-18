@@ -310,25 +310,32 @@ local function attachTilt(window, object, options)
     options = options or {}
     local intensity = options.Intensity or 1
     local maxRotation = options.MaxRotation or 2.2
-    local travel = options.Travel or 3.5
     local scaleAmount = options.Scale or 1.015
     local shadowObject = options.Shadow
     local gradientObject = options.Gradient
-    local basePosition = object.Position
     local baseRotation = object.Rotation
     local scale = object:FindFirstChild("DulbanTiltScale")
     if not scale then
         scale = create("UIScale", { Name = "DulbanTiltScale", Scale = 1, Parent = object })
     end
+
+    -- IMPORTANT:
+    -- Never animate object.Position here. Some Dulban controls live inside
+    -- UIListLayout / AutomaticCanvasSize trees. Fighting layout-owned Position
+    -- can make the control or scrolling canvas jump far away on hover.
+    -- Tilt is therefore rendered with rotation + scale + parallax shadow/glare.
     local hovering = false
     local currentX, currentY = 0, 0
+    local hoverAbsolutePosition = Vector2.new()
+    local hoverAbsoluteSize = Vector2.new(1, 1)
 
     local function restore()
         hovering = false
-        tween(object, 0.32, { Position = basePosition, Rotation = baseRotation }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        currentX, currentY = 0, 0
+        tween(object, 0.32, { Rotation = baseRotation }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
         tween(scale, 0.32, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
         if shadowObject then
-            tween(shadowObject, 0.32, { Position = UDim2.fromOffset(5, 5) }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+            tween(shadowObject, 0.32, { Position = UDim2.fromOffset(4, 4) }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
         end
         if gradientObject then
             tween(gradientObject, 0.35, { Offset = Vector2.new(0, 0), Rotation = 30 }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
@@ -337,6 +344,12 @@ local function attachTilt(window, object, options)
 
     window._maid:Give(object.MouseEnter:Connect(function()
         hovering = true
+        -- Snapshot the unchanging hit rectangle once. Using the live
+        -- AbsolutePosition of a rotating/scaling object creates feedback/jitter.
+        hoverAbsolutePosition = object.AbsolutePosition
+        hoverAbsoluteSize = object.AbsoluteSize
+        if hoverAbsoluteSize.X <= 0 then hoverAbsoluteSize = Vector2.new(1, hoverAbsoluteSize.Y) end
+        if hoverAbsoluteSize.Y <= 0 then hoverAbsoluteSize = Vector2.new(hoverAbsoluteSize.X, 1) end
         tween(scale, 0.22, { Scale = scaleAmount }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
     end))
 
@@ -346,33 +359,26 @@ local function attachTilt(window, object, options)
         if not hovering or not object.Visible or not object.Parent then
             return
         end
+
         local p = mousePosition()
-        local ap = object.AbsolutePosition
-        local as = object.AbsoluteSize
-        if as.X <= 0 or as.Y <= 0 then
-            return
-        end
-        local nx = math.clamp(((p.X - ap.X) / as.X - 0.5) * 2, -1, 1)
-        local ny = math.clamp(((p.Y - ap.Y) / as.Y - 0.5) * 2, -1, 1)
+        local nx = math.clamp(((p.X - hoverAbsolutePosition.X) / hoverAbsoluteSize.X - 0.5) * 2, -1, 1)
+        local ny = math.clamp(((p.Y - hoverAbsolutePosition.Y) / hoverAbsoluteSize.Y - 0.5) * 2, -1, 1)
         local speed = 1 - math.exp(-18 * dt)
         currentX = currentX + (nx - currentX) * speed
         currentY = currentY + (ny - currentY) * speed
-        object.Position = UDim2.new(
-            basePosition.X.Scale,
-            basePosition.X.Offset + currentX * travel * intensity,
-            basePosition.Y.Scale,
-            basePosition.Y.Offset + currentY * travel * intensity
-        )
+
+        -- Safe pseudo-3D: no Position writes, so layouts cannot be corrupted.
         object.Rotation = baseRotation + currentX * maxRotation * intensity
+
         if shadowObject then
             shadowObject.Position = UDim2.fromOffset(
-                5 - currentX * 2.2 * intensity,
-                5 - currentY * 2.2 * intensity
+                4 - currentX * 2.2 * intensity,
+                4 - currentY * 2.2 * intensity
             )
         end
         if gradientObject then
             gradientObject.Offset = Vector2.new(currentX * 0.16, currentY * 0.16)
-            gradientObject.Rotation = 30 + currentX * 18
+            gradientObject.Rotation = 30 + currentX * 18 - currentY * 5
         end
     end))
 
@@ -1533,7 +1539,7 @@ function Section:CreateButton(text, callback, options)
         tween(shadowObj, 0.18, { Position = UDim2.fromOffset(6, 6), BackgroundTransparency = 0.25 })
     end))
     self.Window._maid:Give(button.MouseLeave:Connect(function()
-        tween(button, 0.18, { BackgroundColor3 = self.Window.Theme.Background, Position = UDim2.fromOffset(0, 0) })
+        tween(button, 0.18, { BackgroundColor3 = self.Window.Theme.Background })
         tween(shadowObj, 0.18, { Position = UDim2.fromOffset(4, 4), BackgroundTransparency = 0.38 })
     end))
     self.Window._maid:Give(button.MouseButton1Click:Connect(function()
