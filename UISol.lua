@@ -890,58 +890,151 @@ function Window:_buildDrag()
     local dragging = false
     local dragStart = Vector2.new()
     local startCenter = Vector2.new()
-    local goal = nil
+    local goalCenter = nil
+    local dragKind = nil
 
-    local function clampCenter(center)
-        local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
-        local half = self.Container.AbsoluteSize * 0.5
-        local margin = 18
+    -- IMPORTANT:
+    -- MouseButton1 InputObject.Position is unreliable in some executor/runtime
+    -- environments. Mouse drag therefore uses GetMouseLocation() for BOTH the
+    -- initial point and all following updates, so both coordinates live in the
+    -- same space and the first movement cannot create a huge fake delta.
+    local function pointerPosition(input)
+        if input and input.UserInputType == Enum.UserInputType.Touch then
+            return Vector2.new(input.Position.X, input.Position.Y)
+        end
+        local p = UserInputService:GetMouseLocation()
+        return Vector2.new(p.X, p.Y)
+    end
+
+    local function viewportSize()
+        -- Backdrop is a full-screen GUI object in the exact same coordinate
+        -- space as Container, which is safer than mixing GUI coordinates with
+        -- CurrentCamera.ViewportSize / topbar inset behavior.
+        if self.Backdrop and self.Backdrop.Parent then
+            local size = self.Backdrop.AbsoluteSize
+            if size.X > 1 and size.Y > 1 then
+                return size
+            end
+        end
+        local camera = workspace.CurrentCamera
+        return camera and camera.ViewportSize or Vector2.new(1920, 1080)
+    end
+
+    local function positionToCenter(pos)
+        local viewport = viewportSize()
         return Vector2.new(
-            math.clamp(center.X, math.min(half.X + margin, viewport.X * 0.5), math.max(viewport.X - half.X - margin, viewport.X * 0.5)),
-            math.clamp(center.Y, math.min(half.Y + margin, viewport.Y * 0.5), math.max(viewport.Y - half.Y - margin, viewport.Y * 0.5))
+            viewport.X * pos.X.Scale + pos.X.Offset,
+            viewport.Y * pos.Y.Scale + pos.Y.Offset
         )
     end
 
+    local function clampCenter(center)
+        local viewport = viewportSize()
+        local half = self.Container.AbsoluteSize * 0.5
+        local margin = 18
+
+        local minX = half.X + margin
+        local maxX = viewport.X - half.X - margin
+        local minY = half.Y + margin
+        local maxY = viewport.Y - half.Y - margin
+
+        -- When the window is larger than the available axis, keep its center
+        -- centered on that axis instead of feeding inverted bounds to clamp.
+        local x
+        if minX > maxX then
+            x = viewport.X * 0.5
+        else
+            x = math.clamp(center.X, minX, maxX)
+        end
+
+        local y
+        if minY > maxY then
+            y = viewport.Y * 0.5
+        else
+            y = math.clamp(center.Y, minY, maxY)
+        end
+
+        return Vector2.new(x, y)
+    end
+
     self._maid:Give(self.Header.InputBegan:Connect(function(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+        local kind = input.UserInputType
+        if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then
             return
         end
-        local p = Vector2.new(input.Position.X, input.Position.Y)
+
+        local p = pointerPosition(input)
         local rightZone = self.Header.AbsolutePosition.X + self.Header.AbsoluteSize.X - 180
         if p.X >= rightZone then
             return
         end
+
         dragging = true
+        dragKind = kind
         dragStart = p
-        local ap = self.Container.AbsolutePosition
-        local as = self.Container.AbsoluteSize
-        startCenter = Vector2.new(ap.X + as.X * 0.5, ap.Y + as.Y * 0.5)
-        goal = startCenter
+
+        -- Container has AnchorPoint (0.5, 0.5), so Position is its center.
+        -- Capture that center directly instead of rebuilding it from
+        -- AbsolutePosition; this avoids scale/offset/inset conversion jumps.
+        startCenter = positionToCenter(self.Container.Position)
+        goalCenter = startCenter
     end))
 
     self._maid:Give(UserInputService.InputChanged:Connect(function(input)
-        if not dragging then return end
-        if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+        if not dragging then
             return
         end
-        local now = Vector2.new(input.Position.X, input.Position.Y)
-        goal = clampCenter(startCenter + (now - dragStart))
+
+        if dragKind == Enum.UserInputType.MouseButton1 then
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+                return
+            end
+        elseif dragKind == Enum.UserInputType.Touch then
+            if input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+        else
+            return
+        end
+
+        local now = pointerPosition(input)
+        goalCenter = clampCenter(startCenter + (now - dragStart))
     end))
 
     self._maid:Give(UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
+        if dragKind == Enum.UserInputType.MouseButton1 then
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+                return
+            end
+        elseif dragKind == Enum.UserInputType.Touch then
+            if input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+        else
+            return
         end
+
+        dragging = false
+        dragKind = nil
     end))
 
     self._maid:Give(RunService.RenderStepped:Connect(function(dt)
-        if not goal or not self.Container.Visible then return end
-        local ap = self.Container.AbsolutePosition
-        local as = self.Container.AbsoluteSize
-        local current = Vector2.new(ap.X + as.X * 0.5, ap.Y + as.Y * 0.5)
+        if not goalCenter or not self.Container.Visible then
+            return
+        end
+
+        local currentCenter = positionToCenter(self.Container.Position)
         local alpha = 1 - math.exp(-self.DragSmoothness * dt)
-        local nextCenter = current:Lerp(goal, alpha)
+        local nextCenter = currentCenter:Lerp(goalCenter, alpha)
+
+        -- Position is the center because AnchorPoint == (0.5, 0.5).
         self.Container.Position = UDim2.fromOffset(nextCenter.X, nextCenter.Y)
+
+        -- Let the easing finish, then stop touching Position completely.
+        if not dragging and (goalCenter - nextCenter).Magnitude < 0.05 then
+            self.Container.Position = UDim2.fromOffset(goalCenter.X, goalCenter.Y)
+            goalCenter = nil
+        end
     end))
 end
 
